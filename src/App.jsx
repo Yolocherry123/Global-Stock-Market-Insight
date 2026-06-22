@@ -13,7 +13,10 @@ import {
   AlertTriangle
 } from 'lucide-react';
 
-const API_BASE = 'http://127.0.0.1:8000/api';
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://127.0.0.1:8000/api'
+  : 'https://smb-anti-backend.onrender.com/api'; // Change this URL to your deployed Render service URL once live
+
 
 const EXCHANGE_DISPLAY_NAMES = {
   nasdaq: { sidebar: "NASDAQ", ticker: "NASDAQ" },
