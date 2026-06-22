@@ -1,0 +1,110 @@
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List
+import uvicorn
+import analyst
+import traceback
+
+app = FastAPI(title="Global Stock Market Insights API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/api/exchanges")
+def get_exchanges():
+    try:
+        overview = analyst.fetch_exchange_overview()
+        return {"exchanges": overview}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/movers/{exchange_id}")
+def get_movers(exchange_id: str):
+    try:
+        data = analyst.get_exchange_details(exchange_id)
+        return data
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/correlation")
+def get_correlation():
+    try:
+        corr_data = analyst.get_index_correlations()
+        return corr_data
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/macro")
+def get_macro():
+    try:
+        macro_data = analyst.get_macro_news()
+        return macro_data
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/report")
+def get_report():
+    try:
+        report = analyst.get_overall_market_report()
+        return {"report": report}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/calendar")
+def get_calendar():
+    try:
+        calendar_events = analyst.get_economic_calendar()
+        return {"events": calendar_events}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+class AllocationItem(BaseModel):
+    ticker: str
+    weight: float
+
+class BacktestRequest(BaseModel):
+    allocations: List[AllocationItem]
+    transaction_fee_bps: float = 0.0
+    slippage_pct: float = 0.0
+
+@app.post("/api/backtest")
+def post_backtest(req: BacktestRequest):
+    try:
+        alloc_list = [{"ticker": a.ticker, "weight": a.weight} for a in req.allocations]
+        result = analyst.simulate_portfolio(
+            alloc_list,
+            transaction_fee_bps=req.transaction_fee_bps,
+            slippage_pct=req.slippage_pct
+        )
+        return result
+
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/research/comparison")
+def get_research_comparison():
+    try:
+        data = analyst.get_exchange_comparison_data()
+        return data
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+if __name__ == "__main__":
+    uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)

@@ -1,0 +1,184 @@
+{
+  "exchanges": [
+    {
+      "id": "nasdaq",
+      "name": "NASDAQ",
+      "index_ticker": "^IXIC",
+      "timezone": "America/New_York",
+      "open_time": "09:30",
+      "close_time": "16:00",
+      "screener": {
+        "region": "us",
+        "exchange_codes": ["NMS", "NGM", "NCM"]
+      },
+      "tickers": ["AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "NVDA", "AVGO", "COST", "NFLX", "AMD", "QCOM", "AMGN", "INTU", "ISRG", "TXN"]
+    },
+    {
+      "id": "nyse",
+      "name": "New York Stock Exchange",
+      "index_ticker": "^NYA",
+      "timezone": "America/New_York",
+      "open_time": "09:30",
+      "close_time": "16:00",
+      "screener": {
+        "region": "us",
+        "exchange_codes": ["NYQ"]
+      },
+      "tickers": ["JPM", "BAC", "WFC", "V", "MA", "LLY", "UNH", "XOM", "CVX", "WMT", "PG", "JNJ", "MRK", "HD", "KO", "DIS"]
+    },
+    {
+      "id": "sse",
+      "name": "Shanghai Stock Exchange",
+      "index_ticker": "000001.SS",
+      "timezone": "Asia/Shanghai",
+      "open_time": "09:30",
+      "close_time": "15:00",
+      "screener": {
+        "region": "cn",
+        "exchange_codes": ["SHH"],
+        "ticker_suffixes": [".SS"]
+      },
+      "tickers": ["600519.SS", "601398.SS", "601857.SS", "601288.SS", "601988.SS", "601318.SS", "600036.SS", "600028.SS", "601088.SS", "601628.SS", "600900.SS", "601668.SS"]
+    },
+    {
+      "id": "jpx",
+      "name": "Japan Exchange Group",
+      "index_ticker": "^N225",
+      "timezone": "Asia/Tokyo",
+      "open_time": "09:00",
+      "close_time": "15:00",
+      "screener": {
+        "region": "jp",
+        "exchange_codes": ["JPX"],
+        "ticker_suffixes": [".T"]
+      },
+      "tickers": ["7203.T", "9984.T", "6758.T", "6861.T", "8035.T", "4502.T", "8306.T", "9432.T", "7267.T", "6501.T", "6752.T", "7751.T", "9983.T"]
+    },
+    {
+      "id": "euronext",
+      "name": "Euronext",
+      "index_ticker": "^N100",
+      "timezone": "Europe/Paris",
+      "open_time": "09:00",
+      "close_time": "17:30",
+      "screener": {
+        "region": "fr",
+        "exchange_codes": ["PAR", "AMS", "BRU"],
+        "ticker_suffixes": [".PA", ".AS", ".BR"]
+      },
+      "tickers": ["MC.PA", "ASML.AS", "RMS.PA", "OR.PA", "SAN.PA", "TTE.PA", "PRX.AS", "UNA.AS", "AD.AS", "ABI.BR", "SAF.PA", "AIR.PA"]
+    },
+    {
+      "id": "szse",
+      "name": "Shenzhen Stock Exchange",
+      "index_ticker": "399001.SZ",
+      "timezone": "Asia/Shanghai",
+      "open_time": "09:30",
+      "close_time": "15:00",
+      "screener": {
+        "region": "cn",
+        "exchange_codes": ["SHZ"],
+        "ticker_suffixes": [".SZ"]
+      },
+      "tickers": ["000858.SZ", "000333.SZ", "300750.SZ", "002415.SZ", "000001.SZ", "000002.SZ", "000651.SZ", "300059.SZ", "002475.SZ", "000799.SZ", "300014.SZ", "002594.SZ"]
+    },
+    {
+      "id": "hkex",
+      "name": "Hong Kong Stock Exchange",
+      "index_ticker": "^HSI",
+      "timezone": "Asia/Hong_Kong",
+      "open_time": "09:30",
+      "close_time": "16:00",
+      "screener": {
+        "region": "hk",
+        "exchange_codes": ["HKG"],
+        "ticker_suffixes": [".HK"]
+      },
+      "tickers": ["0700.HK", "9988.HK", "3690.HK", "1299.HK", "0005.HK", "9888.HK", "1810.HK", "2318.HK", "0388.HK", "0941.HK", "1211.HK", "2015.HK"]
+    },
+    {
+      "id": "twse",
+      "name": "Taiwan Stock Exchange",
+      "index_ticker": "^TWII",
+      "timezone": "Asia/Taipei",
+      "open_time": "09:00",
+      "close_time": "13:30",
+      "screener": {
+        "region": "tw",
+        "exchange_codes": ["TAI"],
+        "ticker_suffixes": [".TW"]
+      },
+      "tickers": ["2330.TW", "2317.TW", "2454.TW", "2308.TW", "2881.TW", "2882.TW", "2303.TW", "1301.TW", "2412.TW", "2891.TW", "2002.TW", "2382.TW"]
+    },
+    {
+      "id": "krx",
+      "name": "Korea Exchange",
+      "index_ticker": "^KS11",
+      "timezone": "Asia/Seoul",
+      "open_time": "09:00",
+      "close_time": "15:30",
+      "screener": {
+        "region": "kr",
+        "exchange_codes": ["KSC", "KOE"],
+        "ticker_suffixes": [".KS", ".KQ"]
+      },
+      "tickers": ["005930.KS", "000660.KS", "035420.KS", "005380.KS", "051910.KS", "005490.KS", "207940.KS", "035720.KS", "000270.KS", "068270.KS", "006400.KS", "012330.KS"]
+    },
+    {
+      "id": "bse",
+      "name": "Bombay Stock Exchange",
+      "index_ticker": "^BSESN",
+      "timezone": "Asia/Kolkata",
+      "open_time": "09:15",
+      "close_time": "15:30",
+      "screener": {
+        "region": "in",
+        "exchange_codes": ["BSE"],
+        "ticker_suffixes": [".BO"]
+      },
+      "tickers": ["RELIANCE.BO", "TCS.BO", "INFY.BO", "HDFCBANK.BO", "ICICIBANK.BO", "SBIN.BO", "BHARTIARTL.BO", "ITC.BO", "LT.BO", "HINDUNILVR.BO", "AXISBANK.BO", "KOTAKBANK.BO", "SUNPHARMA.BO", "MARUTI.BO", "ULTRACEMCO.BO"]
+    },
+    {
+      "id": "nse",
+      "name": "National Stock Exchange",
+      "index_ticker": "^NSEI",
+      "timezone": "Asia/Kolkata",
+      "open_time": "09:15",
+      "close_time": "15:30",
+      "screener": {
+        "region": "in",
+        "exchange_codes": ["NSI"],
+        "ticker_suffixes": [".NS"]
+      },
+      "tickers": ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "BHARTIARTL.NS", "ITC.NS", "LT.NS", "HINDUNILVR.NS", "AXISBANK.NS", "KOTAKBANK.NS", "SUNPHARMA.NS", "MARUTI.NS", "ULTRACEMCO.NS"]
+    },
+    {
+      "id": "tsx",
+      "name": "Toronto Stock Exchange",
+      "index_ticker": "^GSPTSE",
+      "timezone": "America/Toronto",
+      "open_time": "09:30",
+      "close_time": "16:00",
+      "screener": {
+        "region": "ca",
+        "exchange_codes": ["TOR"],
+        "ticker_suffixes": [".TO"]
+      },
+      "tickers": ["RY.TO", "TD.TO", "SHOP.TO", "ENB.TO", "CNR.TO", "BNS.TO", "CP.TO", "CNQ.TO", "BAM.TO", "ABX.TO", "TRP.TO", "MFC.TO", "SU.TO"]
+    },
+    {
+      "id": "lse",
+      "name": "London Stock Exchange",
+      "index_ticker": "^FTSE",
+      "timezone": "Europe/London",
+      "open_time": "08:00",
+      "close_time": "16:30",
+      "screener": {
+        "region": "gb",
+        "exchange_codes": ["LSE"],
+        "ticker_suffixes": [".L"]
+      },
+      "tickers": ["SHEL.L", "BP.L", "HSBA.L", "AZN.L", "ULVR.L", "BATS.L", "RIO.L", "GSK.L", "DGE.L", "BARC.L", "LSEG.L", "VOD.L", "RR.L"]
+    }
+  ]
+}
