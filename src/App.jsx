@@ -12,6 +12,14 @@ import {
   Compass,
   AlertTriangle
 } from 'lucide-react';
+import {
+  LightweightCandlestickChart,
+  LightweightTechnicalChart,
+  LightweightMACDChart,
+  LightweightBacktestChart,
+} from './charts/LightweightCharts';
+import { getFundamentalItems } from './fundamentalsFormatters';
+import FundamentalsTab from './FundamentalsTab';
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'http://127.0.0.1:8000/api'
@@ -722,12 +730,22 @@ function EconomicCalendar({ events }) {
 // --- Sentiment Analyzer & Buzzwords ---
 function SentimentAnalysisPanel({ sentiment }) {
   if (!sentiment) return null;
-  const score = sentiment.score; // -1 to 1
-  const rotation = score * 90; // -90 to 90 degrees
+  const score = sentiment.score;
+  const rotation = score * 90;
 
   return (
     <div className="glass-panel" style={{ padding: '8px 12px' }}>
-      <h3 style={{ fontSize: '11.5px', fontWeight: '600', marginBottom: '4px' }}>News Sentiment NLP Analyzer</h3>
+      <h3 style={{ fontSize: '11.5px', fontWeight: '600', marginBottom: '4px' }}>
+        News Sentiment Analyzer
+        {sentiment.source === 'gemini' && (
+          <span style={{ fontSize: '8px', color: 'var(--accent-cyan)', marginLeft: '6px', fontWeight: '500' }}>AI-POWERED</span>
+        )}
+      </h3>
+      {sentiment.summary && (
+        <p style={{ fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '6px', lineHeight: 1.35 }}>
+          {sentiment.summary}
+        </p>
+      )}
       <div className="sentiment-gauge-panel">
         <svg className="sentiment-dial-svg" viewBox="0 0 160 90">
           <defs>
@@ -766,12 +784,32 @@ function SentimentAnalysisPanel({ sentiment }) {
       </div>
       
       <div style={{ borderTop: '1px solid var(--border-color)', marginTop: '6px', paddingTop: '6px' }}>
-        <span style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', textAlign: 'center', marginBottom: '4px' }}>NLP Buzzwords Sentiment Tags</span>
+        <span style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', textAlign: 'center', marginBottom: '4px' }}>Key Sentiment Terms</span>
         <div className="buzzword-cloud">
           {sentiment.buzzwords.map((word, idx) => (
             <span className="buzzword-tag" key={idx}>{word}</span>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function FundamentalsPanel({ info }) {
+  if (!info) return null;
+
+  const items = getFundamentalItems(info);
+
+  return (
+    <div className="glass-panel" style={{ padding: '8px 12px' }}>
+      <h3 style={{ fontSize: '11.5px', fontWeight: '600', marginBottom: '6px' }}>Fundamental Analysis</h3>
+      <div className="metrics-pill-grid">
+        {items.map((item) => (
+          <div className="metric-pill" key={item.label}>
+            <span className="metric-pill-label">{item.label}</span>
+            <span className="metric-pill-value">{item.value}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1221,7 +1259,15 @@ export default function App() {
         throw new Error(errData.detail || "Backtest calculation failed.");
       }
       const data = await res.json();
-      setBacktestResult(data);
+      setBacktestResult({
+        ...data,
+        metrics: {
+          benchmark_return_pct: 0,
+          alpha_pct: 0,
+          beat_benchmark: false,
+          ...data.metrics,
+        },
+      });
     } catch (err) {
       setBacktestError(err.message);
     } finally {
@@ -1364,6 +1410,13 @@ export default function App() {
               <Compass size={14} style={{ color: 'var(--color-amber)' }} />
               <span>Exchange Research</span>
             </button>
+            <button 
+              className={`tab-btn ${activeTab === 'fundamentals' ? 'active' : ''}`}
+              onClick={() => setActiveTab('fundamentals')}
+            >
+              <Percent size={14} style={{ color: 'var(--accent-cyan)' }} />
+              <span>Fundamental Analysis</span>
+            </button>
 
 
           </div>
@@ -1479,6 +1532,13 @@ export default function App() {
                         >
                           US-Lagged
                         </button>
+                        <button 
+                          className={`exchange-btn ${corrType === 'cross_asset' ? 'active' : ''}`}
+                          style={{ padding: '2px 5px', fontSize: '9.5px', height: '18px' }}
+                          onClick={() => setCorrType('cross_asset')}
+                        >
+                          Cross-Asset
+                        </button>
                       </div>
                     </div>
                     {correlationData && <CorrelationHeatmap matrix={correlationData[corrType]} />}
@@ -1583,6 +1643,8 @@ export default function App() {
                           </p>
                         </div>
 
+                        <FundamentalsPanel info={selectedMover.info} />
+
                         {/* Widescreen 3-Chart Column Layout */}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
                           {/* Price Candle */}
@@ -1592,7 +1654,10 @@ export default function App() {
                               Intraday Candles (15m Price)
                             </h3>
                             <div className="chart-container-svg">
-                              <CandlestickChart points={selectedMover.intraday ? selectedMover.intraday.chart_points : []} />
+                              <LightweightCandlestickChart
+                                points={selectedMover.intraday ? selectedMover.intraday.chart_points : []}
+                                tradingDate={selectedMover.actual_trading_date}
+                              />
                             </div>
                           </div>
 
@@ -1614,7 +1679,7 @@ export default function App() {
                               Daily Bollinger Bands (20,2) & Close Trend
                             </h3>
                             <div className="chart-container-svg">
-                              <TechnicalIndicatorChart points={selectedMover.history_chart_points} />
+                              <LightweightTechnicalChart points={selectedMover.history_chart_points} />
                             </div>
                           </div>
                         </div>
@@ -1628,7 +1693,7 @@ export default function App() {
                               MACD Trend (Line & Divergence Histogram)
                             </h3>
                             <div className="chart-container-svg">
-                              <MACDChart points={selectedMover.macd_history} />
+                              <LightweightMACDChart points={selectedMover.macd_history} />
                             </div>
                           </div>
 
@@ -1949,6 +2014,24 @@ export default function App() {
                           </span>
                         </div>
                         <div className="backtest-metric-card">
+                          <span className="backtest-metric-label">S&P 500 Return</span>
+                          <span className={`backtest-metric-value ${(backtestResult.metrics.benchmark_return_pct ?? 0) >= 0 ? 'text-up' : 'text-down'}`}>
+                            {(backtestResult.metrics.benchmark_return_pct ?? 0) >= 0 ? `+${backtestResult.metrics.benchmark_return_pct}%` : `${backtestResult.metrics.benchmark_return_pct}%`}
+                          </span>
+                        </div>
+                        <div className="backtest-metric-card">
+                          <span className="backtest-metric-label">Alpha vs Benchmark</span>
+                          <span className={`backtest-metric-value ${(backtestResult.metrics.alpha_pct ?? 0) >= 0 ? 'text-up' : 'text-down'}`}>
+                            {(backtestResult.metrics.alpha_pct ?? 0) >= 0 ? `+${backtestResult.metrics.alpha_pct}%` : `${backtestResult.metrics.alpha_pct}%`}
+                          </span>
+                        </div>
+                        <div className="backtest-metric-card">
+                          <span className="backtest-metric-label">Beat S&P 500?</span>
+                          <span className={`backtest-metric-value ${backtestResult.metrics.beat_benchmark ? 'text-up' : 'text-down'}`}>
+                            {backtestResult.metrics.beat_benchmark ? 'Yes' : 'No'}
+                          </span>
+                        </div>
+                        <div className="backtest-metric-card">
                           <span className="backtest-metric-label">Sharpe Ratio (Ann.)</span>
                           <span className="backtest-metric-value" style={{ color: 'var(--accent-cyan)' }}>
                             {backtestResult.metrics.sharpe_ratio ? backtestResult.metrics.sharpe_ratio.toFixed(2) : '0.00'}
@@ -2055,7 +2138,7 @@ export default function App() {
                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {backtestResult ? (
                       backtestView === 'historical' ? (
-                        <PortfolioBacktestChart points={backtestResult.chart_points} />
+                        <LightweightBacktestChart points={backtestResult.chart_points} />
                       ) : (
                         <MonteCarloChart points={backtestResult.monte_carlo} />
                       )
@@ -2260,6 +2343,11 @@ export default function App() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* TAB 5: FUNDAMENTAL ANALYSIS */}
+          {activeTab === 'fundamentals' && (
+            <FundamentalsTab apiBase={API_BASE} />
           )}
         </section>
 

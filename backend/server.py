@@ -81,6 +81,9 @@ class BacktestRequest(BaseModel):
     transaction_fee_bps: float = 0.0
     slippage_pct: float = 0.0
 
+class FundamentalsCompareRequest(BaseModel):
+    tickers: List[str]
+
 @app.post("/api/backtest")
 def post_backtest(req: BacktestRequest):
     try:
@@ -101,6 +104,26 @@ def get_research_comparison():
     try:
         data = analyst.get_exchange_comparison_data()
         return data
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/fundamentals/catalog")
+def get_fundamentals_catalog():
+    try:
+        return analyst.get_fundamentals_catalog()
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/fundamentals/compare")
+def post_fundamentals_compare(req: FundamentalsCompareRequest):
+    try:
+        if not req.tickers:
+            raise HTTPException(status_code=400, detail="At least one ticker is required.")
+        return analyst.compare_fundamentals(req.tickers)
+    except HTTPException:
+        raise
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

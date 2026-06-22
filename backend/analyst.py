@@ -6,9 +6,48 @@ import yfinance as yf
 import json
 import math
 import os
+import re
 import requests
 import traceback
 import screener
+
+CROSS_ASSET_TICKERS = {
+    "gold": "GC=F",
+    "crude_oil": "CL=F",
+    "us_10y_yield": "^TNX",
+    "usd_index": "DX-Y.NYB",
+}
+
+
+def _call_gemini_text(prompt, timeout=12):
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return None
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        headers = {"Content-Type": "application/json"}
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        res = requests.post(url, json=payload, headers=headers, timeout=timeout)
+        if res.status_code == 200:
+            return res.json()["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception as e:
+        print(f"Gemini API call failed: {e}")
+    return None
+
+
+def _parse_gemini_json(text):
+    if not text:
+        return None
+    try:
+        return json.loads(text.strip())
+    except json.JSONDecodeError:
+        match = re.search(r"\{[\s\S]*\}", text)
+        if match:
+            try:
+                return json.loads(match.group())
+            except json.JSONDecodeError:
+                return None
+    return None
 
 def load_config():
     try:
@@ -231,7 +270,7 @@ def get_macd_history(df, days=30):
         sub_df = df.tail(days)
         for d in sub_df.index:
             history_points.append({
-                "date": d.strftime('%m-%d'),
+                "date": d.strftime('%Y-%m-%d'),
                 "macd": round(float(macd_line.loc[d]), 4) if not math.isnan(macd_line.loc[d]) else 0.0,
                 "signal": round(float(signal_line.loc[d]), 4) if not math.isnan(signal_line.loc[d]) else 0.0,
                 "hist": round(float(macd_hist.loc[d]), 4) if not math.isnan(macd_hist.loc[d]) else 0.0
@@ -252,7 +291,7 @@ def get_volume_history(df, days=30):
         sub_df = df.tail(days)
         for d in sub_df.index:
             history_points.append({
-                "date": d.strftime('%m-%d'),
+                "date": d.strftime('%Y-%m-%d'),
                 "volume": int(volume.loc[d]),
                 "volume_sma": round(float(volume_sma_30.loc[d]), 1) if not math.isnan(volume_sma_30.loc[d]) else None
             })
@@ -467,14 +506,8 @@ def generate_technical_signals(df):
         
     return signals
 
-def analyze_sentiment(news_list):
-    """
-    Computes a sentiment score (-1 to +1) based on a financial word lexicon.
-    Extracts key buzzwords.
-    """
-    if not news_list:
-        return {"sentiment": "Neutral", "score": 0.0, "buzzwords": []}
-        
+def _analyze_sentiment_lexicon(news_list):
+    """Fallback lexicon-based sentiment when Gemini is unavailable."""
     bullish_words = {
         "beat", "surge", "gain", "rise", "jump", "growth", "bullish", "profit",
         "record", "outperform", "upgrade", "buy", "optimistic", "strong", "recovery",
@@ -529,8 +562,46 @@ def analyze_sentiment(news_list):
     return {
         "sentiment": sentiment,
         "score": round(score, 2),
-        "buzzwords": buzzwords
+        "buzzwords": buzzwords,
+        "summary": "Lexicon-based sentiment estimate from headline keywords.",
+        "source": "lexicon",
     }
+
+
+def analyze_sentiment(news_list):
+    """
+    Uses Gemini for contextual financial sentiment when available,
+    with lexicon fallback for offline or unauthenticated runs.
+    """
+    if not news_list:
+        return {"sentiment": "Neutral", "score": 0.0, "buzzwords": [], "summary": "", "source": "none"}
+
+    headlines = "\n".join([f"- {n.get('title', '')}" for n in news_list[:10] if n.get("title")])
+    prompt = f"""You are a financial sentiment analyst. Analyze these stock news headlines and return ONLY valid JSON (no markdown):
+{{"sentiment": "Bullish" or "Bearish" or "Neutral", "score": <float from -1.0 to 1.0>, "buzzwords": [<up to 5 key financial terms>], "summary": "<one concise sentence explaining net sentiment>"}}
+
+Headlines:
+{headlines}
+"""
+    gemini_text = _call_gemini_text(prompt)
+    parsed = _parse_gemini_json(gemini_text)
+    if parsed and "score" in parsed:
+        score = float(parsed.get("score", 0.0))
+        score = max(-1.0, min(1.0, score))
+        sentiment = parsed.get("sentiment", "Neutral")
+        if sentiment not in ("Bullish", "Bearish", "Neutral"):
+            sentiment = "Bullish" if score >= 0.2 else "Bearish" if score <= -0.2 else "Neutral"
+        buzzwords = parsed.get("buzzwords", [])[:5]
+        return {
+            "sentiment": sentiment,
+            "score": round(score, 2),
+            "buzzwords": buzzwords,
+            "summary": parsed.get("summary", ""),
+            "source": "gemini",
+        }
+
+    return _analyze_sentiment_lexicon(news_list)
+
 
 def run_monte_carlo(tickers, weights, days=252, simulations=100):
     try:
@@ -664,6 +735,8 @@ def simulate_portfolio(allocations, transaction_fee_bps=0.0, slippage_pct=0.0):
         
         # Metrics calculations
         cum_ret = ((port_cum.iloc[-1] - 10000.0) / 10000.0) * 100.0
+        bench_ret = ((bench_cum.iloc[-1] - 10000.0) / 10000.0) * 100.0
+        alpha = cum_ret - bench_ret
         
         # Sharpe Ratio (annualized, 4% risk-free rate)
         rf_annual = 0.04
@@ -715,7 +788,7 @@ def simulate_portfolio(allocations, transaction_fee_bps=0.0, slippage_pct=0.0):
         for idx in range(0, len(date_index), sample_step):
             d = date_index[idx]
             chart_points.append({
-                "date": d.strftime("%m-%d"),
+                "date": d.strftime("%Y-%m-%d"),
                 "portfolio": round(float(port_cum.iloc[idx]), 2),
                 "benchmark": round(float(bench_cum.iloc[idx]), 2)
             })
@@ -723,7 +796,7 @@ def simulate_portfolio(allocations, transaction_fee_bps=0.0, slippage_pct=0.0):
         if len(date_index) - 1 not in range(0, len(date_index), sample_step):
             d = date_index[-1]
             chart_points.append({
-                "date": d.strftime("%m-%d"),
+                "date": d.strftime("%Y-%m-%d"),
                 "portfolio": round(float(port_cum.iloc[-1]), 2),
                 "benchmark": round(float(bench_cum.iloc[-1]), 2)
             })
@@ -737,6 +810,9 @@ def simulate_portfolio(allocations, transaction_fee_bps=0.0, slippage_pct=0.0):
         return {
             "metrics": {
                 "cumulative_return_pct": round(float(cum_ret), 2),
+                "benchmark_return_pct": round(float(bench_ret), 2),
+                "alpha_pct": round(float(alpha), 2),
+                "beat_benchmark": bool(cum_ret > bench_ret),
                 "sharpe_ratio": round(float(sharpe), 2),
                 "sortino_ratio": round(float(sortino), 2),
                 "treynor_ratio": round(float(treynor), 2),
@@ -896,7 +972,7 @@ def get_index_correlations():
         ticker_to_id = {v: k for k, v in index_tickers.items()}
         data = data.rename(columns=ticker_to_id)
         
-        returns = data.pct_change().dropna()
+        returns = data.pct_change(fill_method=None).dropna()
         corr_matrix = returns.corr().round(4).to_dict()
         for k in corr_matrix:
             for sub_k in corr_matrix[k]:
@@ -921,14 +997,39 @@ def get_index_correlations():
                         lagged_corr[ex][us_ex] = round(float(corr_val), 4) if not math.isnan(corr_val) else 0.0
                     else:
                         lagged_corr[ex][us_ex] = 0.0
+
+        cross_asset = {}
+        try:
+            cross_tickers = list(CROSS_ASSET_TICKERS.values())
+            cross_data = yf.download(cross_tickers, period="45d", interval="1d", progress=False)["Close"]
+            if isinstance(cross_data, pd.Series):
+                cross_data = cross_data.to_frame()
+            cross_data.columns = list(CROSS_ASSET_TICKERS.keys())
+            cross_returns = cross_data.pct_change(fill_method=None).dropna()
+
+            for eq_id in returns.columns:
+                cross_asset[eq_id] = {}
+                for asset_id in CROSS_ASSET_TICKERS.keys():
+                    if asset_id not in cross_returns.columns:
+                        cross_asset[eq_id][asset_id] = 0.0
+                        continue
+                    aligned = pd.concat([returns[eq_id], cross_returns[asset_id]], axis=1).dropna()
+                    if len(aligned) > 3:
+                        corr_val = aligned.iloc[:, 0].corr(aligned.iloc[:, 1])
+                        cross_asset[eq_id][asset_id] = round(float(corr_val), 4) if not math.isnan(corr_val) else 0.0
+                    else:
+                        cross_asset[eq_id][asset_id] = 0.0
+        except Exception as cross_exc:
+            print(f"Error computing cross-asset correlations: {cross_exc}")
                         
         return {
             "contemporaneous": corr_matrix,
-            "us_lagged": lagged_corr
+            "us_lagged": lagged_corr,
+            "cross_asset": cross_asset,
         }
     except Exception as e:
         print(f"Error computing correlations: {e}")
-        return {"contemporaneous": {}, "us_lagged": {}}
+        return {"contemporaneous": {}, "us_lagged": {}, "cross_asset": {}}
 
 def generate_expert_analysis(mover_data, exchange_name, trading_day):
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -1124,6 +1225,103 @@ def get_top_losers(tickers, actual_target, t_minus_1, limit=5, candidates=None):
         reverse=True
     )[:limit]
 
+def fetch_company_fundamentals(symbol):
+    symbol = (symbol or "").strip()
+    try:
+        raw_info = yf.Ticker(symbol).info
+        return {
+            "longName": raw_info.get("longName", symbol),
+            "sector": raw_info.get("sector", "N/A"),
+            "industry": raw_info.get("industry", "N/A"),
+            "longBusinessSummary": raw_info.get("longBusinessSummary", "No summary available."),
+            "marketCap": raw_info.get("marketCap"),
+            "website": raw_info.get("website", ""),
+            "fullTimeEmployees": raw_info.get("fullTimeEmployees"),
+            "trailingPE": raw_info.get("trailingPE"),
+            "forwardPE": raw_info.get("forwardPE"),
+            "pegRatio": raw_info.get("pegRatio"),
+            "debtToEquity": raw_info.get("debtToEquity"),
+            "ebitda": raw_info.get("ebitda"),
+            "profitMargins": raw_info.get("profitMargins"),
+            "dividendYield": raw_info.get("dividendYield"),
+            "priceToBook": raw_info.get("priceToBook"),
+            "returnOnEquity": raw_info.get("returnOnEquity"),
+        }
+    except Exception as e:
+        return {
+            "longName": symbol,
+            "sector": "N/A",
+            "industry": "N/A",
+            "longBusinessSummary": "Information currently unavailable.",
+            "marketCap": None,
+            "website": "",
+            "fullTimeEmployees": None,
+            "trailingPE": None,
+            "forwardPE": None,
+            "pegRatio": None,
+            "debtToEquity": None,
+            "ebitda": None,
+            "profitMargins": None,
+            "dividendYield": None,
+            "priceToBook": None,
+            "returnOnEquity": None,
+            "_error": str(e),
+        }
+
+
+def _build_ticker_exchange_map():
+    config = load_config()
+    mapping = {}
+    for ex in config.get("exchanges", []):
+        for ticker in ex.get("tickers", []):
+            mapping[ticker] = ex["id"]
+    return mapping
+
+
+def get_fundamentals_catalog():
+    config = load_config()
+    exchanges = [
+        {"id": ex["id"], "name": ex["name"], "tickers": ex.get("tickers", [])}
+        for ex in config.get("exchanges", [])
+    ]
+    return {"exchanges": exchanges}
+
+
+def compare_fundamentals(tickers):
+    max_tickers = 5
+    seen = set()
+    ordered = []
+    for raw in tickers:
+        symbol = (raw or "").strip()
+        if not symbol or symbol in seen:
+            continue
+        seen.add(symbol)
+        ordered.append(symbol)
+        if len(ordered) >= max_tickers:
+            break
+
+    ticker_map = _build_ticker_exchange_map()
+    results = []
+    for symbol in ordered:
+        info = fetch_company_fundamentals(symbol)
+        error = info.pop("_error", None)
+        if error and info.get("marketCap") is None and info.get("sector") == "N/A":
+            results.append({
+                "ticker": symbol,
+                "exchange_id": ticker_map.get(symbol),
+                "info": None,
+                "error": error or "Unable to fetch fundamentals for this ticker.",
+            })
+        else:
+            results.append({
+                "ticker": symbol,
+                "exchange_id": ticker_map.get(symbol),
+                "info": info,
+                "error": None,
+            })
+    return {"results": results}
+
+
 def _enrich_movers_list(raw_movers, actual_target, index_hist):
     return [_enrich_mover_detail(m, actual_target, index_hist) for m in raw_movers]
 
@@ -1196,43 +1394,28 @@ def _enrich_mover_detail(m, actual_target, index_hist):
     history_chart_points = []
     if not hist_1y.empty and len(hist_1y) >= 30:
         hist_30d = hist_1y.tail(30)
-        ma20 = hist_1y['Close'].rolling(window=20).mean()
-        std20 = hist_1y['Close'].rolling(window=20).std()
+        closes = hist_1y["Close"]
+        ma20 = closes.rolling(window=20).mean()
+        ma50 = closes.rolling(window=50).mean()
+        ma200 = closes.rolling(window=200).mean()
+        std20 = closes.rolling(window=20).std()
         upper_bb = ma20 + 2 * std20
         lower_bb = ma20 - 2 * std20
 
         for d in hist_30d.index:
             if d in ma20.index and d in upper_bb.index and d in lower_bb.index:
                 history_chart_points.append({
-                    "date": d.strftime('%m-%d'),
+                    "date": d.strftime('%Y-%m-%d'),
                     "close": round(float(hist_1y.loc[d, 'Close']), 2),
                     "sma20": round(float(ma20.loc[d]), 2) if not math.isnan(ma20.loc[d]) else None,
+                    "sma50": round(float(ma50.loc[d]), 2) if d in ma50.index and not math.isnan(ma50.loc[d]) else None,
+                    "sma200": round(float(ma200.loc[d]), 2) if d in ma200.index and not math.isnan(ma200.loc[d]) else None,
                     "upper_bb": round(float(upper_bb.loc[d]), 2) if not math.isnan(upper_bb.loc[d]) else None,
                     "lower_bb": round(float(lower_bb.loc[d]), 2) if not math.isnan(lower_bb.loc[d]) else None
                 })
 
-    company_info = {}
-    try:
-        raw_info = ticker_obj.info
-        company_info = {
-            "longName": raw_info.get("longName", symbol),
-            "sector": raw_info.get("sector", "N/A"),
-            "industry": raw_info.get("industry", "N/A"),
-            "longBusinessSummary": raw_info.get("longBusinessSummary", "No summary available."),
-            "marketCap": raw_info.get("marketCap"),
-            "website": raw_info.get("website", ""),
-            "fullTimeEmployees": raw_info.get("fullTimeEmployees")
-        }
-    except Exception:
-        company_info = {
-            "longName": symbol,
-            "sector": "N/A",
-            "industry": "N/A",
-            "longBusinessSummary": "Information currently unavailable.",
-            "marketCap": None,
-            "website": "",
-            "fullTimeEmployees": None
-        }
+    company_info = fetch_company_fundamentals(symbol)
+    company_info.pop("_error", None)
 
     news_articles = []
     try:
