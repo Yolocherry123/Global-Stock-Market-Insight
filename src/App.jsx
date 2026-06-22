@@ -15,7 +15,7 @@ import {
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'http://127.0.0.1:8000/api'
-  : 'https://smb-anti-backend.onrender.com/api'; // Change this URL to your deployed Render service URL once live
+  : 'https://global-stock-market-insight-api.onrender.com/api';
 
 
 const EXCHANGE_DISPLAY_NAMES = {
