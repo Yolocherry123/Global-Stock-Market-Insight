@@ -80,6 +80,7 @@ class BacktestRequest(BaseModel):
     allocations: List[AllocationItem]
     transaction_fee_bps: float = 0.0
     slippage_pct: float = 0.0
+    market: str = "us"
 
 class FundamentalsCompareRequest(BaseModel):
     tickers: List[str]
@@ -91,10 +92,13 @@ def post_backtest(req: BacktestRequest):
         result = analyst.simulate_portfolio(
             alloc_list,
             transaction_fee_bps=req.transaction_fee_bps,
-            slippage_pct=req.slippage_pct
+            slippage_pct=req.slippage_pct,
+            market=req.market,
         )
         return result
 
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -104,6 +108,16 @@ def get_research_comparison():
     try:
         data = analyst.get_exchange_comparison_data()
         return data
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/research/{exchange_id}")
+def get_exchange_research(exchange_id: str):
+    try:
+        return analyst.get_exchange_research(exchange_id)
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

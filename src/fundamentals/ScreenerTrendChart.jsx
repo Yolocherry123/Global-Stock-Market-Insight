@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { LightweightFundamentalsChart } from '../charts/LightweightCharts';
 import {
-  TREND_METRIC_PRESETS,
   buildTrendSeries,
   collectMetrics,
+  formatMetricDisplayName,
+  mergeCompareMetrics,
 } from '../fundamentalsFormatters';
 
 const SECTION_LABELS = {
@@ -34,21 +35,20 @@ export default function ScreenerTrendChart({
 
   const metrics = useMemo(() => collectMetrics(valid, activeSection), [valid, activeSection]);
 
-  const availableMetrics = useMemo(() => {
-    const preset = TREND_METRIC_PRESETS.filter((p) =>
-      metrics.some((m) => m.rowLabel === p || m.label.includes(p)),
-    );
-    const rest = metrics.map((m) => m.rowLabel).filter((m) => !preset.includes(m));
-    return [...preset, ...rest.slice(0, 30)];
-  }, [metrics]);
+  const availableMetrics = useMemo(
+    () => mergeCompareMetrics(metrics, activeSection),
+    [metrics, activeSection],
+  );
 
-  const activeMetric = availableMetrics.includes(metricLabel)
-    ? metricLabel
-    : availableMetrics[0] || 'Sales';
+  const activeMetricLabel = useMemo(() => {
+    if (availableMetrics.some((m) => m.label === metricLabel)) return metricLabel;
+    const byRow = availableMetrics.find((m) => m.rowLabel === metricLabel);
+    return byRow?.label || availableMetrics[0]?.label || 'Sales';
+  }, [availableMetrics, metricLabel]);
 
   const series = useMemo(
-    () => buildTrendSeries(valid, activeSection, activeMetric, range === 0 ? null : range),
-    [valid, activeSection, activeMetric, range],
+    () => buildTrendSeries(valid, activeSection, activeMetricLabel, range === 0 ? null : range),
+    [valid, activeSection, activeMetricLabel, range],
   );
 
   if (!valid.length) return null;
@@ -86,12 +86,12 @@ export default function ScreenerTrendChart({
           Line item
           <select
             className="backtest-input"
-            value={activeMetric}
+            value={activeMetricLabel}
             onChange={(e) => setMetricLabel(e.target.value)}
             style={{ ...selectStyle, display: 'block', marginTop: '4px', minWidth: '160px' }}
           >
             {availableMetrics.map((m) => (
-              <option key={m} value={m}>{m}</option>
+              <option key={m.label} value={m.label}>{m.label}</option>
             ))}
           </select>
         </label>
@@ -113,7 +113,7 @@ export default function ScreenerTrendChart({
       </div>
       {!lockSection && (
         <p className="text-muted" style={{ fontSize: '10px', marginBottom: '8px' }}>
-          Viewing {SECTION_LABELS[activeSection] || activeSection} · {activeMetric}
+          Viewing {SECTION_LABELS[activeSection] || activeSection} · {formatMetricDisplayName(activeMetricLabel)}
         </p>
       )}
       <LightweightFundamentalsChart series={series} />

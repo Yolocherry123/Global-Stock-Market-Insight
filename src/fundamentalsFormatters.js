@@ -208,6 +208,9 @@ export const COMPANY_COLORS = [
   '#fbbf24',
   '#34d399',
   '#f472b6',
+  '#60a5fa',
+  '#fb923c',
+  '#2dd4bf',
 ];
 
 export function formatIndianNumber(val) {
@@ -373,7 +376,7 @@ export function buildCompanyComparison(results, sectionKey, metricLabel, period)
     .map((r) => {
       const section = r.data[dataKey];
       const flat = flattenRows(section?.rows || []);
-      const match = flat.find((f) => f.rowLabel === metricLabel || f.label === metricLabel);
+      const match = flat.find((f) => f.label === metricLabel || f.rowLabel === metricLabel);
       const value = match ? getRowValue(match.row, period) : null;
       return {
         ticker: r.ticker,
@@ -392,7 +395,7 @@ export function buildTrendComparisonTable(results, sectionKey, metricLabel, maxP
   const rows = valid.map((r) => {
     const section = r.data[sectionKey];
     const flat = flattenRows(section?.rows || []);
-    const match = flat.find((f) => f.rowLabel === metricLabel || f.label === metricLabel);
+    const match = flat.find((f) => f.label === metricLabel || f.rowLabel === metricLabel);
     const values = {};
     sliced.forEach((p) => {
       values[p] = match ? getRowValue(match.row, p) : null;
@@ -439,17 +442,65 @@ export function buildHeaderRatiosComparison(results) {
 }
 
 export function mergeCompareMetrics(collected, sectionKey) {
-  const map = new Map(collected.map((m) => [m.rowLabel, m]));
   const priority = sectionKey === 'ratiosTable' ? RATIO_TABLE_PRIORITY : TREND_METRIC_PRESETS;
   const merged = [];
-  priority.forEach((label) => {
-    if (map.has(label)) merged.push({ label, rowLabel: label });
-    map.delete(label);
+  const seen = new Set();
+
+  const add = (m) => {
+    if (!m || seen.has(m.label)) return;
+    seen.add(m.label);
+    merged.push(m);
+  };
+
+  priority.forEach((rowLabel) => {
+    const topLevel = collected.find((m) => m.rowLabel === rowLabel && !m.label.includes('›'));
+    if (topLevel) add(topLevel);
+    else {
+      const match = collected.find((m) => m.rowLabel === rowLabel || m.label === rowLabel);
+      if (match) add(match);
+    }
   });
-  collected.forEach((m) => {
-    if (!merged.some((x) => x.rowLabel === m.rowLabel)) merged.push(m);
-  });
+
+  collected.forEach((m) => add(m));
   return merged;
+}
+
+export function getAllCompareMetricOptions(results, dataKey) {
+  const paths = buildOrderedPaths(results, dataKey);
+  if (!paths.length) {
+    return collectMetrics(results, dataKey).map((m) => ({ ...m, depth: 0 }));
+  }
+  return paths.map(({ path, rowLabel, depth }) => ({
+    label: path,
+    rowLabel,
+    depth,
+  }));
+}
+
+function parsePeriodSortKey(period) {
+  const s = String(period).trim();
+  const fyMatch = s.match(/FY\s*(\d{4})/i);
+  if (fyMatch) return { year: Number(fyMatch[1]), month: 3 };
+  const monthMatch = s.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})/i);
+  if (monthMatch) {
+    const months = {
+      jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+      jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+    };
+    return { year: Number(monthMatch[2]), month: months[monthMatch[1].toLowerCase()] || 0 };
+  }
+  if (/^\d{4}$/.test(s)) return { year: Number(s), month: 6 };
+  return { year: 0, month: 0, raw: s };
+}
+
+export function sortPeriods(periods) {
+  return [...periods].sort((a, b) => {
+    const ka = parsePeriodSortKey(a);
+    const kb = parsePeriodSortKey(b);
+    if (ka.year !== kb.year) return ka.year - kb.year;
+    if (ka.month !== kb.month) return ka.month - kb.month;
+    return String(a).localeCompare(String(b));
+  });
 }
 
 export function collectPeriods(results, dataKey) {
@@ -458,7 +509,13 @@ export function collectPeriods(results, dataKey) {
     if (r.error || !r.data?.[dataKey]?.periods) continue;
     r.data[dataKey].periods.forEach((p) => periods.add(p));
   }
-  return Array.from(periods);
+  return sortPeriods(Array.from(periods));
+}
+
+export function formatMetricDisplayName(label) {
+  if (!label) return '';
+  if (label.includes(' › ')) return label.split(' › ').pop();
+  return label;
 }
 
 export function collectMetrics(results, dataKey) {
@@ -570,7 +627,7 @@ export function buildTrendSeries(results, dataKey, metricLabel, maxPoints = null
   return valid.map((r, idx) => {
     const section = r.data[dataKey];
     const flat = flattenRows(section?.rows || []);
-    const match = flat.find((f) => f.rowLabel === metricLabel || f.label === metricLabel);
+    const match = flat.find((f) => f.label === metricLabel || f.rowLabel === metricLabel);
     const points = sliced
       .map((period, pIdx) => {
         const raw = match ? getRowValue(match.row, period) : null;
@@ -587,6 +644,55 @@ export function buildTrendSeries(results, dataKey, metricLabel, maxPoints = null
       points,
     };
   }).filter((s) => s.points.length > 0);
+}
+
+export function buildMultiMetricTrendCharts(results, dataKey, metricLabels, maxPoints = null) {
+  const labels = (metricLabels || []).filter(Boolean);
+  return labels.map((metricLabel) => ({
+    metricLabel,
+    series: buildTrendSeries(results, dataKey, metricLabel, maxPoints),
+  })).filter((entry) => entry.series.length > 0);
+}
+
+export function normalizeTrendPointsToIndex(points) {
+  if (!points?.length) return [];
+  const base = points[0].value;
+  if (base == null || base === 0) return points.filter((p) => p.value != null);
+  return points
+    .filter((p) => p.value != null)
+    .map((p) => ({
+      time: p.time,
+      value: (p.value / base) * 100,
+    }));
+}
+
+export function buildCombinedMultiMetricTrendSeries(
+  results,
+  dataKey,
+  metricLabels,
+  maxPoints = null,
+  { normalize = true } = {},
+) {
+  const charts = buildMultiMetricTrendCharts(results, dataKey, metricLabels, maxPoints);
+  const combined = [];
+
+  charts.forEach(({ metricLabel, series }, metricIdx) => {
+    series.forEach((s) => {
+      const points = normalize ? normalizeTrendPointsToIndex(s.points) : s.points;
+      if (!points.length) return;
+      combined.push({
+        id: `${s.id}-${metricLabel}`,
+        label: `${s.label} · ${metricLabel}`,
+        color: s.color,
+        metricLabel,
+        ticker: s.id,
+        lineStyle: metricIdx % 4,
+        points,
+      });
+    });
+  });
+
+  return combined;
 }
 
 export function computeDerivedGrowth(section, rowLabels = DERIVED_METRIC_LABELS) {

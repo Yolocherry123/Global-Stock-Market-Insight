@@ -412,15 +412,24 @@ export default function FundamentalsTab({ apiBase, initialTickers, onConsumeSeed
                 ))
               )}
               <ScreenerProsConsCompare results={results} />
-              {validResults.map((r) => (
+              {validResults.length > 1 ? (
                 <ScreenerPeersPanel
-                  key={`peers-${r.ticker}`}
-                  result={r}
+                  result={validResults[0]}
                   slots={slots}
                   onAddPeer={onAddPeer}
                   onAddAllPeers={onAddAllPeers}
                 />
-              ))}
+              ) : (
+                validResults.map((r) => (
+                  <ScreenerPeersPanel
+                    key={`peers-${r.ticker}`}
+                    result={r}
+                    slots={slots}
+                    onAddPeer={onAddPeer}
+                    onAddAllPeers={onAddAllPeers}
+                  />
+                ))
+              )}
             </>
           )}
 

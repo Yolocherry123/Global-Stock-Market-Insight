@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -16,8 +16,12 @@ import {
   LightweightCandlestickChart,
   LightweightTechnicalChart,
   LightweightMACDChart,
+  LightweightVolatilityChart,
+  LightweightVolumeChart,
   LightweightBacktestChart,
+  LightweightMonteCarloChart,
 } from './charts/LightweightCharts';
+import { ZoomableChart } from './charts/ChartZoomModal';
 import { getFundamentalItems } from './fundamentalsFormatters';
 import FundamentalsTab from './FundamentalsTab';
 
@@ -42,6 +46,45 @@ const EXCHANGE_DISPLAY_NAMES = {
   lse: { sidebar: "London LSE", ticker: "LSE" }
 };
 
+const BACKTEST_MARKET_CONFIG = {
+  us: {
+    label: 'US (NYSE)',
+    benchmarkLabel: 'S&P 500',
+    currencySymbol: '$',
+    tickerPlaceholder: 'AAPL',
+    defaultAllocations: [
+      { ticker: 'AAPL', weight: 30 },
+      { ticker: 'MSFT', weight: 30 },
+      { ticker: 'GOOGL', weight: 20 },
+      { ticker: 'AMZN', weight: 20 },
+    ],
+  },
+  nse: {
+    label: 'Nifty (NSE)',
+    benchmarkLabel: 'Nifty 50',
+    currencySymbol: '₹',
+    tickerPlaceholder: 'RELIANCE',
+    defaultAllocations: [
+      { ticker: 'RELIANCE', weight: 30 },
+      { ticker: 'TCS', weight: 30 },
+      { ticker: 'HDFCBANK', weight: 20 },
+      { ticker: 'INFY', weight: 20 },
+    ],
+  },
+  bse: {
+    label: 'Sensex (BSE)',
+    benchmarkLabel: 'Sensex',
+    currencySymbol: '₹',
+    tickerPlaceholder: 'RELIANCE',
+    defaultAllocations: [
+      { ticker: 'RELIANCE', weight: 30 },
+      { ticker: 'TCS', weight: 30 },
+      { ticker: 'HDFCBANK', weight: 20 },
+      { ticker: 'INFY', weight: 20 },
+    ],
+  },
+};
+
 // --- Custom Markdown-to-HTML Renderer Helper ---
 function renderMarkdown(text) {
   if (!text) return '';
@@ -55,7 +98,6 @@ function renderMarkdown(text) {
   return html;
 }
 
-// --- RSI Gauge Meter Component ---
 function RSIGauge({ rsi }) {
   if (rsi === null || rsi === undefined) return <span className="text-muted">N/A</span>;
   const leftPercent = Math.min(100, Math.max(0, rsi));
@@ -68,11 +110,11 @@ function RSIGauge({ rsi }) {
     statusText = 'Overbought';
     statusClass = 'text-down';
   }
-  
+
   return (
     <div className="rsi-gauge-container">
       <div className="rsi-gauge-track">
-        <div className="rsi-gauge-pin" style={{ left: `${leftPercent}%` }} title={`RSI: ${rsi}`}></div>
+        <div className="rsi-gauge-pin" style={{ left: `${leftPercent}%` }} title={`RSI: ${rsi}`} />
       </div>
       <div className="rsi-gauge-labels">
         <span>OVERSOLD (30)</span>
@@ -152,90 +194,6 @@ function CandlestickChart({ points }) {
             </g>
           );
         })}
-
-        {timeLabelsIndices.map((idx) => {
-          if (idx >= points.length) return null;
-          return (
-            <text key={idx} x={scaleX(idx)} y={height - 4} textAnchor="middle" className="chart-axis-text">
-              {points[idx].time}
-            </text>
-          );
-        })}
-
-        <line x1={leftPadding} y1={height - bottomPadding} x2={width - rightPadding} y2={height - bottomPadding} className="chart-axis-line" />
-      </svg>
-    </div>
-  );
-}
-
-function VolatilityLineChart({ points }) {
-  if (!points || points.length === 0) {
-    return <div className="text-muted text-center" style={{ paddingTop: '50px', fontSize: '11px' }}>No intraday data available</div>;
-  }
-
-  const leftPadding = 55;
-  const rightPadding = 15;
-  const topPadding = 20;
-  const bottomPadding = 20;
-  const width = 500;
-  const height = 120;
-
-  const vols = points.map(p => p.volatility);
-  const maxVol = Math.max(...vols);
-  const minVol = Math.min(...vols);
-  const volRange = maxVol - minVol || 0.1;
-
-  const yMax = maxVol + volRange * 0.1;
-  const yMin = Math.max(0, minVol - volRange * 0.1);
-  const yRange = yMax - yMin;
-
-  const scaleX = (index) => leftPadding + (index * (width - leftPadding - rightPadding)) / (points.length - 1 || 1);
-  const scaleY = (val) => height - bottomPadding - ((val - yMin) * (height - topPadding - bottomPadding)) / yRange;
-
-  let pathD = '';
-  points.forEach((p, idx) => {
-    const x = scaleX(idx);
-    const y = scaleY(p.volatility);
-    if (idx === 0) {
-      pathD += `M ${x} ${y}`;
-    } else {
-      pathD += ` L ${x} ${y}`;
-    }
-  });
-
-  let areaD = pathD;
-  if (points.length > 0) {
-    areaD += ` L ${scaleX(points.length - 1)} ${height - bottomPadding}`;
-    areaD += ` L ${scaleX(0)} ${height - bottomPadding} Z`;
-  }
-
-  const gridLines = [];
-  const gridCount = 2;
-  for (let i = 0; i <= gridCount; i++) {
-    gridLines.push(yMin + (yRange * i) / gridCount);
-  }
-
-  const timeLabelsIndices = [0, Math.floor(points.length / 2), points.length - 1];
-
-  return (
-    <div style={{ width: '100%', height: '100%' }}>
-      <svg viewBox={`0 0 ${width} ${height}`} className="chart-svg">
-        <defs>
-          <linearGradient id="cyan-gradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent-cyan)" stopOpacity="0.25"/>
-            <stop offset="100%" stopColor="var(--accent-cyan)" stopOpacity="0"/>
-          </linearGradient>
-        </defs>
-
-        {gridLines.map((yVal, idx) => (
-          <g key={idx}>
-            <line x1={leftPadding} y1={scaleY(yVal)} x2={width - rightPadding} y2={scaleY(yVal)} className="chart-grid-line" />
-            <text x={leftPadding - 6} y={scaleY(yVal) + 3} textAnchor="end" className="chart-axis-text">{yVal.toFixed(3)}%</text>
-          </g>
-        ))}
-
-        {points.length > 0 && <path d={areaD} className="chart-area-cyan" />}
-        {points.length > 0 && <path d={pathD} className="chart-line cyan" />}
 
         {timeLabelsIndices.map((idx) => {
           if (idx >= points.length) return null;
@@ -428,92 +386,6 @@ function MACDChart({ points }) {
         
         {/* Signal Line */}
         {points.length > 0 && <path d={signalPath} className="chart-line" style={{ stroke: 'var(--color-amber)', strokeWidth: '1.2px' }} />}
-
-        {/* X labels */}
-        {timeLabelsIndices.map((idx) => {
-          if (idx >= points.length) return null;
-          return (
-            <text key={idx} x={scaleX(idx)} y={height - 4} textAnchor="middle" className="chart-axis-text">
-              {points[idx].date}
-            </text>
-          );
-        })}
-        <line x1={leftPadding} y1={height - bottomPadding} x2={width - rightPadding} y2={height - bottomPadding} className="chart-axis-line" />
-      </svg>
-    </div>
-  );
-}
-
-function VolumeChart({ points }) {
-  if (!points || points.length === 0) {
-    return <div className="text-muted text-center" style={{ paddingTop: '50px', fontSize: '11px' }}>No Volume history trend available</div>;
-  }
-
-  const leftPadding = 55;
-  const rightPadding = 15;
-  const topPadding = 20;
-  const bottomPadding = 20;
-  const width = 500;
-  const height = 120;
-
-  const maxVol = Math.max(...points.map(p => p.volume), 1000);
-  const scaleX = (index) => leftPadding + (index * (width - leftPadding - rightPadding)) / (points.length - 1 || 1);
-  const scaleY = (val) => height - bottomPadding - (val * (height - topPadding - bottomPadding)) / maxVol;
-
-  let smaPath = '';
-  points.forEach((p, idx) => {
-    if (p.volume_sma !== null && p.volume_sma !== undefined) {
-      const x = scaleX(idx);
-      const ySma = scaleY(p.volume_sma);
-      if (smaPath === '') {
-        smaPath += `M ${x} ${ySma}`;
-      } else {
-        smaPath += ` L ${x} ${ySma}`;
-      }
-    }
-  });
-
-  const timeLabelsIndices = [0, Math.floor(points.length / 2), points.length - 1];
-
-  const formatVol = (val) => {
-    if (val >= 1e6) return (val / 1e6).toFixed(1) + 'M';
-    if (val >= 1e3) return (val / 1e3).toFixed(0) + 'K';
-    return val;
-  };
-
-  return (
-    <div style={{ width: '100%', height: '100%' }}>
-      <svg viewBox={`0 0 ${width} ${height}`} className="chart-svg">
-        {/* Y Axis Grid lines */}
-        {[0.5, 1.0].map((ratio, idx) => (
-          <g key={idx}>
-            <line x1={leftPadding} y1={scaleY(maxVol * ratio)} x2={width - rightPadding} y2={scaleY(maxVol * ratio)} className="chart-grid-line" />
-            <text x={leftPadding - 6} y={scaleY(maxVol * ratio) + 3} textAnchor="end" className="chart-axis-text">{formatVol(maxVol * ratio)}</text>
-          </g>
-        ))}
-
-        {/* Volume Bars */}
-        {points.map((p, idx) => {
-          const x = scaleX(idx);
-          const yVol = scaleY(p.volume);
-          const barWidth = Math.max(2, (width - leftPadding - rightPadding) / points.length * 0.6);
-          const barHeight = Math.max(1, height - bottomPadding - yVol);
-
-          return (
-            <rect 
-              key={idx} 
-              x={x - barWidth / 2} 
-              y={yVol} 
-              width={barWidth} 
-              height={barHeight} 
-              fill="rgba(0, 229, 255, 0.45)"
-              className="volume-bar-rect"
-            />
-          );
-        })}
-
-        {/* SMA volume line */}
-        {smaPath && <path d={smaPath} className="chart-line" style={{ stroke: 'var(--color-amber)', strokeWidth: '1.2px', strokeDasharray: '3' }} />}
 
         {/* X labels */}
         {timeLabelsIndices.map((idx) => {
@@ -940,97 +812,6 @@ function PortfolioBacktestChart({ points }) {
   );
 }
 
-// --- Monte Carlo Forecast Chart ---
-function MonteCarloChart({ points }) {
-  if (!points || points.length === 0) return null;
-
-  const leftPadding = 55;
-  const rightPadding = 15;
-  const topPadding = 20;
-  const bottomPadding = 20;
-  const width = 600;
-  const height = 180;
-
-  const values = points.flatMap(p => [p.conservative, p.median, p.optimistic]);
-  const maxVal = Math.max(...values);
-  const minVal = Math.min(...values);
-  const valRange = maxVal - minVal || 1.0;
-
-  const yMax = maxVal + valRange * 0.05;
-  const yMin = Math.max(0, minVal - valRange * 0.05);
-  const yRange = yMax - yMin;
-
-  const scaleX = (index) => leftPadding + (index * (width - leftPadding - rightPadding)) / (points.length - 1 || 1);
-  const scaleY = (val) => height - bottomPadding - ((val - yMin) * (height - topPadding - bottomPadding)) / yRange;
-
-  let medPath = '';
-  let optPath = '';
-  let consPath = '';
-
-  points.forEach((p, idx) => {
-    const x = scaleX(idx);
-    if (idx === 0) {
-      medPath += `M ${x} ${scaleY(p.median)}`;
-      optPath += `M ${x} ${scaleY(p.optimistic)}`;
-      consPath += `M ${x} ${scaleY(p.conservative)}`;
-    } else {
-      medPath += ` L ${x} ${scaleY(p.median)}`;
-      optPath += ` L ${x} ${scaleY(p.optimistic)}`;
-      consPath += ` L ${x} ${scaleY(p.conservative)}`;
-    }
-  });
-
-  let areaD = optPath;
-  for (let i = points.length - 1; i >= 0; i--) {
-    areaD += ` L ${scaleX(i)} ${scaleY(points[i].conservative)}`;
-  }
-  areaD += ' Z';
-
-  const gridLines = [];
-  const gridCount = 3;
-  for (let i = 0; i <= gridCount; i++) {
-    gridLines.push(yMin + (yRange * i) / gridCount);
-  }
-
-  const stepsIndices = [0, Math.floor(points.length / 2), points.length - 1];
-
-  return (
-    <div style={{ width: '100%', height: '100%' }}>
-      <svg viewBox={`0 0 ${width} ${height}`} className="chart-svg">
-        <defs>
-          <linearGradient id="mc-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent-cyan)" stopOpacity="0.15"/>
-            <stop offset="100%" stopColor="var(--accent-cyan)" stopOpacity="0.02"/>
-          </linearGradient>
-        </defs>
-
-        {gridLines.map((yVal, idx) => (
-          <g key={idx}>
-            <line x1={leftPadding} y1={scaleY(yVal)} x2={width - rightPadding} y2={scaleY(yVal)} className="chart-grid-line" />
-            <text x={leftPadding - 6} y={scaleY(yVal) + 3} textAnchor="end" className="chart-axis-text">${yVal.toLocaleString(undefined, { maximumFractionDigits: 0 })}</text>
-          </g>
-        ))}
-
-        {points.length > 0 && <path d={areaD} fill="url(#mc-grad)" opacity="0.6" />}
-        {points.length > 0 && <path d={optPath} className="chart-line" style={{ stroke: 'rgba(0, 229, 255, 0.4)', strokeDasharray: '2,2' }} />}
-        {points.length > 0 && <path d={consPath} className="chart-line" style={{ stroke: 'rgba(255, 23, 68, 0.4)', strokeDasharray: '2,2' }} />}
-        {points.length > 0 && <path d={medPath} className="chart-line portfolio" />}
-
-        {stepsIndices.map((idx) => {
-          if (idx >= points.length) return null;
-          return (
-            <text key={idx} x={scaleX(idx)} y={height - 4} textAnchor="middle" className="chart-axis-text">
-              Day {points[idx].step}
-            </text>
-          );
-        })}
-
-        <line x1={leftPadding} y1={height - bottomPadding} x2={width - rightPadding} y2={height - bottomPadding} className="chart-axis-line" />
-      </svg>
-    </div>
-  );
-}
-
 // --- Global Returns Bar Chart ---
 function GlobalReturnsBarChart({ exchanges }) {
   if (!exchanges || exchanges.length === 0) return null;
@@ -1173,12 +954,10 @@ export default function App() {
   const [error, setError] = useState(null);
 
   const [calendarEvents, setCalendarEvents] = useState([]);
-  const [backtestAllocations, setBacktestAllocations] = useState([
-    { ticker: 'AAPL', weight: 30 },
-    { ticker: 'MSFT', weight: 30 },
-    { ticker: 'GOOGL', weight: 20 },
-    { ticker: 'AMZN', weight: 20 }
-  ]);
+  const [backtestAllocations, setBacktestAllocations] = useState(
+    BACKTEST_MARKET_CONFIG.us.defaultAllocations
+  );
+  const [backtestMarket, setBacktestMarket] = useState('us');
   const [backtestResult, setBacktestResult] = useState(null);
   const [backtestLoading, setBacktestLoading] = useState(false);
   const [backtestError, setBacktestError] = useState(null);
@@ -1189,6 +968,9 @@ export default function App() {
   const [researchLoading, setResearchLoading] = useState(false);
   const [compareA, setCompareA] = useState('nasdaq');
   const [compareB, setCompareB] = useState('lse');
+  const [exchangeResearch, setExchangeResearch] = useState(null);
+  const [exchangeResearchLoading, setExchangeResearchLoading] = useState(false);
+  const exchangeResearchCache = useRef({});
 
 
 
@@ -1201,6 +983,12 @@ export default function App() {
       fetchExchangeDetails(selectedExId);
     }
   }, [selectedExId]);
+
+  useEffect(() => {
+    if (activeTab === 'research' && selectedExId && selectedExId !== 'global') {
+      fetchExchangeResearch(selectedExId);
+    }
+  }, [selectedExId, activeTab]);
 
   const fetchGlobalData = async () => {
     setLoadingOverview(true);
@@ -1250,6 +1038,13 @@ export default function App() {
     }
   };
 
+  const handleBacktestMarketChange = (market) => {
+    setBacktestMarket(market);
+    setBacktestAllocations(BACKTEST_MARKET_CONFIG[market].defaultAllocations);
+    setBacktestResult(null);
+    setBacktestError(null);
+  };
+
   const handleBacktest = async (e) => {
     if (e) e.preventDefault();
     const totalWeight = backtestAllocations.reduce((sum, a) => sum + parseFloat(a.weight || 0), 0);
@@ -1269,7 +1064,8 @@ export default function App() {
             .filter(a => a.ticker.trim() !== '')
             .map(a => ({ ticker: a.ticker.toUpperCase(), weight: parseFloat(a.weight) })),
           transaction_fee_bps: parseFloat(transactionFee || 0),
-          slippage_pct: parseFloat(slippage || 0)
+          slippage_pct: parseFloat(slippage || 0),
+          market: backtestMarket,
         })
       });
 
@@ -1314,6 +1110,26 @@ export default function App() {
       console.error(err);
     } finally {
       setLoadingDetails(false);
+    }
+  };
+
+  const fetchExchangeResearch = async (id) => {
+    if (exchangeResearchCache.current[id]) {
+      setExchangeResearch(exchangeResearchCache.current[id]);
+      return;
+    }
+    setExchangeResearchLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/research/${id}`);
+      if (!res.ok) throw new Error(`Failed to load research for ${id}`);
+      const data = await res.json();
+      exchangeResearchCache.current[id] = data;
+      setExchangeResearch(data);
+    } catch (err) {
+      console.error(err);
+      setExchangeResearch(null);
+    } finally {
+      setExchangeResearchLoading(false);
     }
   };
 
@@ -1380,10 +1196,12 @@ export default function App() {
           {exchanges.map((ex) => (
             <button
               key={ex.id}
-              className={`exchange-btn ${selectedExId === ex.id && activeTab === 'movers' ? 'active' : ''}`}
+              className={`exchange-btn ${selectedExId === ex.id && (activeTab === 'movers' || activeTab === 'research') ? 'active' : ''}`}
               onClick={() => {
                 setSelectedExId(ex.id);
-                setActiveTab('movers');
+                if (activeTab !== 'research') {
+                  setActiveTab('movers');
+                }
               }}
             >
               <div className="exchange-btn-left">
@@ -1416,18 +1234,21 @@ export default function App() {
               <span>Daily Movers</span>
             </button>
             <button 
+              className={`tab-btn ${activeTab === 'research' ? 'active' : ''}`}
+              onClick={() => {
+                setCompareA(selectedExId !== 'global' ? selectedExId : compareA);
+                setActiveTab('research');
+              }}
+            >
+              <Compass size={14} style={{ color: 'var(--color-amber)' }} />
+              <span>Exchange Research</span>
+            </button>
+            <button 
               className={`tab-btn ${activeTab === 'quant' ? 'active' : ''}`}
               onClick={() => setActiveTab('quant')}
             >
               <Activity size={14} style={{ color: 'var(--accent-cyan)' }} />
               <span>Quant Simulator</span>
-            </button>
-            <button 
-              className={`tab-btn ${activeTab === 'research' ? 'active' : ''}`}
-              onClick={() => setActiveTab('research')}
-            >
-              <Compass size={14} style={{ color: 'var(--color-amber)' }} />
-              <span>Exchange Research</span>
             </button>
             <button 
               className={`tab-btn ${activeTab === 'fundamentals' ? 'active' : ''}`}
@@ -1676,10 +1497,24 @@ export default function App() {
                               Intraday Candles (15m Price)
                             </h3>
                             <div className="chart-container-svg">
-                              <LightweightCandlestickChart
-                                points={selectedMover.intraday ? selectedMover.intraday.chart_points : []}
-                                tradingDate={selectedMover.actual_trading_date}
-                              />
+                              <ZoomableChart
+                                title="Intraday Candles (15m Price)"
+                                renderExpanded={() => (
+                                  <LightweightCandlestickChart
+                                    points={selectedMover.intraday ? selectedMover.intraday.chart_points : []}
+                                    tradingDate={selectedMover.actual_trading_date}
+                                    height="100%"
+                                    interactive
+                                  />
+                                )}
+                              >
+                                <LightweightCandlestickChart
+                                  points={selectedMover.intraday ? selectedMover.intraday.chart_points : []}
+                                  tradingDate={selectedMover.actual_trading_date}
+                                  height="100%"
+                                  interactive={false}
+                                />
+                              </ZoomableChart>
                             </div>
                           </div>
 
@@ -1690,7 +1525,24 @@ export default function App() {
                               Intraday Volatility Spread Curve (%)
                             </h3>
                             <div className="chart-container-svg">
-                              <VolatilityLineChart points={selectedMover.intraday ? selectedMover.intraday.chart_points : []} />
+                              <ZoomableChart
+                                title="Intraday Volatility Spread Curve (%)"
+                                renderExpanded={() => (
+                                  <LightweightVolatilityChart
+                                    points={selectedMover.intraday ? selectedMover.intraday.chart_points : []}
+                                    tradingDate={selectedMover.actual_trading_date}
+                                    height="100%"
+                                    interactive
+                                  />
+                                )}
+                              >
+                                <LightweightVolatilityChart
+                                  points={selectedMover.intraday ? selectedMover.intraday.chart_points : []}
+                                  tradingDate={selectedMover.actual_trading_date}
+                                  height="100%"
+                                  interactive={false}
+                                />
+                              </ZoomableChart>
                             </div>
                           </div>
 
@@ -1701,7 +1553,22 @@ export default function App() {
                               Daily Bollinger Bands (20,2) & Close Trend
                             </h3>
                             <div className="chart-container-svg">
-                              <LightweightTechnicalChart points={selectedMover.history_chart_points} />
+                              <ZoomableChart
+                                title="Daily Bollinger Bands (20,2) & Close Trend"
+                                renderExpanded={() => (
+                                  <LightweightTechnicalChart
+                                    points={selectedMover.history_chart_points}
+                                    height="100%"
+                                    interactive
+                                  />
+                                )}
+                              >
+                                <LightweightTechnicalChart
+                                  points={selectedMover.history_chart_points}
+                                  height="100%"
+                                  interactive={false}
+                                />
+                              </ZoomableChart>
                             </div>
                           </div>
                         </div>
@@ -1715,7 +1582,22 @@ export default function App() {
                               MACD Trend (Line & Divergence Histogram)
                             </h3>
                             <div className="chart-container-svg">
-                              <LightweightMACDChart points={selectedMover.macd_history} />
+                              <ZoomableChart
+                                title="MACD Trend (Line & Divergence Histogram)"
+                                renderExpanded={() => (
+                                  <LightweightMACDChart
+                                    points={selectedMover.macd_history}
+                                    height="100%"
+                                    interactive
+                                  />
+                                )}
+                              >
+                                <LightweightMACDChart
+                                  points={selectedMover.macd_history}
+                                  height="100%"
+                                  interactive={false}
+                                />
+                              </ZoomableChart>
                             </div>
                           </div>
 
@@ -1726,7 +1608,22 @@ export default function App() {
                               Daily Volume vs 30-Day Avg Volume (SMA)
                             </h3>
                             <div className="chart-container-svg">
-                              <VolumeChart points={selectedMover.volume_history} />
+                              <ZoomableChart
+                                title="Daily Volume vs 30-Day Avg Volume (SMA)"
+                                renderExpanded={() => (
+                                  <LightweightVolumeChart
+                                    points={selectedMover.volume_history}
+                                    height="100%"
+                                    interactive
+                                  />
+                                )}
+                              >
+                                <LightweightVolumeChart
+                                  points={selectedMover.volume_history}
+                                  height="100%"
+                                  interactive={false}
+                                />
+                              </ZoomableChart>
                             </div>
                           </div>
                         </div>
@@ -1859,15 +1756,15 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* News Catalysts */}
+                          {/* Stock-specific news */}
                           <div className="glass-panel" style={{ padding: '8px 12px' }}>
                             <h3 style={{ fontSize: '11.5px', fontWeight: '600', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                               <Newspaper size={11} className="text-up" />
-                              Catalyst News & Wires
+                              <span className="mono">{selectedMover.ticker}</span> — Stock Catalyst News
                             </h3>
-                            <div className="news-feed" style={{ maxHeight: '90px', overflowY: 'auto' }}>
+                            <div className="news-feed" style={{ maxHeight: '120px', overflowY: 'auto' }}>
                               {selectedMover.news && selectedMover.news.length > 0 ? (
-                                selectedMover.news.slice(0, 3).map((n, idx) => (
+                                selectedMover.news.slice(0, 5).map((n, idx) => (
                                   <div key={idx} className="news-item">
                                     <a href={n.link} target="_blank" rel="noreferrer" className="news-title" style={{ fontSize: '12px' }}>{n.title}</a>
                                     <div className="news-meta">
@@ -1882,19 +1779,6 @@ export default function App() {
                               )}
                             </div>
                           </div>
-                        </div>
-
-                        {/* Mover Academic Commentary with source links */}
-                        <div className="glass-panel" style={{ padding: '8px 12px' }}>
-                          <h2 style={{ fontSize: '12.5px', fontWeight: '600', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Info size={13} className="text-up" />
-                            Expert Analyst & Academic Commentary ({exchangeDetails.exchange_name})
-                          </h2>
-                          <div 
-                            className="academic-report" 
-                            style={{ paddingRight: '4px', fontSize: '12.5px' }}
-                            dangerouslySetInnerHTML={{ __html: renderMarkdown(exchangeDetails.expert_opinion) }} 
-                          />
                         </div>
 
                       </div>
@@ -1918,21 +1802,37 @@ export default function App() {
                   Institutional Portfolio Backtester & Risk Simulator
                 </h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '11px', marginBottom: '4px' }}>
-                  Simulate risk metrics, Sharpe/Sortino ratios, slippage, and max drawdown of your custom multi-asset portfolio compared against the S&P 500 index.
+                  Simulate risk metrics, Sharpe/Sortino ratios, slippage, and max drawdown of your custom multi-asset portfolio compared against a market benchmark using the maximum available price history.
+                  Starting capital: {BACKTEST_MARKET_CONFIG[backtestMarket].currencySymbol}10,000.
+                  {backtestResult?.history_start_date && backtestResult?.history_end_date && (
+                    <> Backtest range: {backtestResult.history_start_date} to {backtestResult.history_end_date}.</>
+                  )}
                 </p>
               </div>
 
               <div className="backtest-container">
                 {/* Left Form Panel */}
                 <div className="glass-panel backtest-setup-panel">
-                  <h3 style={{ fontSize: '11.5px', fontWeight: '600', marginBottom: '6px' }}>Portfolio Allocations</h3>
-                  
+                  <h3 style={{ fontSize: '11.5px', fontWeight: '600', marginBottom: '6px' }}>Market & Portfolio Allocations</h3>
+
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                    {Object.entries(BACKTEST_MARKET_CONFIG).map(([id, cfg]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className={`exchange-btn ${backtestMarket === id ? 'active' : ''}`}
+                        onClick={() => handleBacktestMarketChange(id)}
+                      >
+                        {cfg.label}
+                      </button>
+                    ))}
+                  </div>
                   <form onSubmit={handleBacktest} className="backtest-form">
                     {backtestAllocations.map((alloc, idx) => (
                       <div key={idx} className="backtest-row">
                         <input 
                           type="text" 
-                          placeholder="Ticker (e.g. AAPL)" 
+                          placeholder={`Ticker (e.g. ${BACKTEST_MARKET_CONFIG[backtestMarket].tickerPlaceholder})`} 
                           className="backtest-input backtest-input-ticker"
                           value={alloc.ticker}
                           onChange={(e) => {
@@ -2027,7 +1927,9 @@ export default function App() {
 
                   {backtestResult && backtestResult.metrics && (
                     <div style={{ marginTop: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '8px' }}>
-                      <h4 style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px' }}>Simulation Results</h4>
+                      <h4 style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px' }}>
+                        Simulation Results ({backtestResult.currency === 'INR' ? '₹' : '$'}10,000 base)
+                      </h4>
                       <div className="backtest-metrics-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                         <div className="backtest-metric-card">
                           <span className="backtest-metric-label">Cumulative Return</span>
@@ -2036,7 +1938,7 @@ export default function App() {
                           </span>
                         </div>
                         <div className="backtest-metric-card">
-                          <span className="backtest-metric-label">S&P 500 Return</span>
+                          <span className="backtest-metric-label">{(backtestResult.benchmark_label || BACKTEST_MARKET_CONFIG[backtestMarket].benchmarkLabel)} Return</span>
                           <span className={`backtest-metric-value ${(backtestResult.metrics.benchmark_return_pct ?? 0) >= 0 ? 'text-up' : 'text-down'}`}>
                             {(backtestResult.metrics.benchmark_return_pct ?? 0) >= 0 ? `+${backtestResult.metrics.benchmark_return_pct}%` : `${backtestResult.metrics.benchmark_return_pct}%`}
                           </span>
@@ -2048,7 +1950,7 @@ export default function App() {
                           </span>
                         </div>
                         <div className="backtest-metric-card">
-                          <span className="backtest-metric-label">Beat S&P 500?</span>
+                          <span className="backtest-metric-label">Beat {(backtestResult.benchmark_label || BACKTEST_MARKET_CONFIG[backtestMarket].benchmarkLabel)}?</span>
                           <span className={`backtest-metric-value ${backtestResult.metrics.beat_benchmark ? 'text-up' : 'text-down'}`}>
                             {backtestResult.metrics.beat_benchmark ? 'Yes' : 'No'}
                           </span>
@@ -2101,8 +2003,8 @@ export default function App() {
                 </div>
 
                 {/* Right Chart Panel */}
-                <div className="glass-panel backtest-results-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '300px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="glass-panel backtest-results-panel">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                       <h3 style={{ fontSize: '11.5px', fontWeight: '600' }}>Portfolio Projections</h3>
                       {backtestResult && (
@@ -2124,48 +2026,25 @@ export default function App() {
                         </div>
                       )}
                     </div>
-                    {backtestResult && (
-                      <div style={{ display: 'flex', gap: '10px', fontSize: '9px' }}>
-                        {backtestView === 'historical' ? (
-                          <>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <span style={{ width: '8px', height: '8px', background: 'var(--accent-cyan)', display: 'inline-block', borderRadius: '2px' }}></span>
-                              Portfolio
-                            </span>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <span style={{ width: '8px', height: '8px', border: '1px dashed var(--text-muted)', display: 'inline-block', borderRadius: '2px' }}></span>
-                              S&P 500 Benchmark
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <span style={{ width: '8px', height: '8px', background: 'var(--accent-cyan)', display: 'inline-block', borderRadius: '2px' }}></span>
-                              Median Path
-                            </span>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <span style={{ width: '8px', height: '8px', background: 'rgba(0, 229, 255, 0.45)', display: 'inline-block', borderRadius: '2px' }}></span>
-                              90% Band
-                            </span>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <span style={{ width: '8px', height: '8px', background: 'rgba(255, 23, 68, 0.45)', display: 'inline-block', borderRadius: '2px' }}></span>
-                              10% Band
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    )}
                   </div>
 
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div className="backtest-chart-area">
                     {backtestResult ? (
                       backtestView === 'historical' ? (
-                        <LightweightBacktestChart points={backtestResult.chart_points} />
+                        <LightweightBacktestChart
+                          points={backtestResult.chart_points}
+                          stockSeries={backtestResult.stock_series}
+                          benchmarkLabel={backtestResult.benchmark_label || BACKTEST_MARKET_CONFIG[backtestMarket].benchmarkLabel}
+                          currency={backtestResult.currency || (backtestMarket === 'us' ? 'USD' : 'INR')}
+                        />
                       ) : (
-                        <MonteCarloChart points={backtestResult.monte_carlo} />
+                        <LightweightMonteCarloChart
+                          points={backtestResult.monte_carlo}
+                          currency={backtestResult.currency || (backtestMarket === 'us' ? 'USD' : 'INR')}
+                        />
                       )
                     ) : (
-                      <div className="text-muted text-center" style={{ fontSize: '11px' }}>
+                      <div className="text-muted text-center" style={{ fontSize: '11px', alignSelf: 'center', margin: 'auto' }}>
                         Set allocations and execute the simulation model to view equity path.
                       </div>
                     )}
@@ -2227,6 +2106,64 @@ export default function App() {
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+                  {/* Exchange-specific news & expert commentary (sidebar-selected exchange) */}
+                  {selectedExId && selectedExId !== 'global' && (
+                    <>
+                      <div className="glass-panel">
+                        <h3 style={{ fontSize: '12px', fontWeight: '600', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Newspaper size={12} className="text-up" />
+                          Exchange Market Headlines — {exchanges.find(e => e.id === selectedExId)?.name || selectedExId}
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '400' }}>
+                            (index: {exchanges.find(e => e.id === selectedExId)?.index_ticker})
+                          </span>
+                        </h3>
+                        {exchangeResearchLoading ? (
+                          <div className="text-muted" style={{ fontSize: '11px', padding: '8px 0' }}>Loading exchange headlines...</div>
+                        ) : (
+                          <div className="news-feed" style={{ maxHeight: '140px', overflowY: 'auto' }}>
+                            {exchangeResearch?.exchange_news?.length > 0 ? (
+                              exchangeResearch.exchange_news.slice(0, 8).map((n, idx) => (
+                                <div key={idx} className="news-item">
+                                  <a href={n.link} target="_blank" rel="noreferrer" className="news-title" style={{ fontSize: '12px' }}>{n.title}</a>
+                                  <div className="news-meta">
+                                    <span>{n.publisher}</span>
+                                    <span>•</span>
+                                    <span>{n.publish_time}</span>
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="text-muted text-center" style={{ paddingTop: '12px', fontSize: '11px' }}>No exchange-level headlines available</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="glass-panel" style={{ padding: '8px 12px' }}>
+                        <h2 style={{ fontSize: '12.5px', fontWeight: '600', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Info size={13} className="text-up" />
+                          Expert Analyst & Academic Commentary
+                          {exchangeResearch?.exchange_name && (
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '400' }}>
+                              ({exchangeResearch.exchange_name}{exchangeResearch.trading_day ? ` — ${exchangeResearch.trading_day}` : ''})
+                            </span>
+                          )}
+                        </h2>
+                        {exchangeResearchLoading ? (
+                          <div className="text-muted" style={{ fontSize: '11px' }}>Generating exchange commentary...</div>
+                        ) : exchangeResearch?.expert_opinion ? (
+                          <div
+                            className="academic-report"
+                            style={{ paddingRight: '4px', fontSize: '12.5px' }}
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(exchangeResearch.expert_opinion) }}
+                          />
+                        ) : (
+                          <div className="text-muted" style={{ fontSize: '11px' }}>No commentary available for this exchange.</div>
+                        )}
+                      </div>
+                    </>
+                  )}
                   
                   {/* Selector Header */}
                   <div className="glass-panel" style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>

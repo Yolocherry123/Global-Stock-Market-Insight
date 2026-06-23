@@ -17,7 +17,7 @@ export default function ScreenerProsConsCompare({ results }) {
   return (
     <div className="glass-panel" style={{ padding: '10px 12px' }}>
       <h3 style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>Pros & Cons Comparison</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(valid.length, 3)}, 1fr)`, gap: '10px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
         {valid.map((r) => (
           <div key={r.ticker}>
             <ScreenerProsCons pros={r.data.pros} cons={r.data.cons} companyName={r.data.name} />

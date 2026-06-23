@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { LightweightFundamentalsChart } from '../charts/LightweightCharts';
+import ScreenerCompareMultiTrend from './ScreenerCompareMultiTrend';
 import { RatioLabel } from './RatioInfoTip';
 import {
+  COMPARE_PRESETS,
   FINANCIAL_SECTIONS,
   buildCompanyComparison,
   buildHeaderRatiosComparison,
@@ -11,6 +13,7 @@ import {
   collectPeriods,
   exportTableToCsv,
   formatIndianNumber,
+  formatMetricDisplayName,
   getBestWorstIndices,
   mergeCompareMetrics,
   parseNumericValue,
@@ -90,14 +93,21 @@ export default function ScreenerCompanyCompare({ results }) {
   const headerRatios = useMemo(() => buildHeaderRatiosComparison(valid), [valid]);
 
   useEffect(() => {
-    if (metrics.length && !metrics.some((m) => m.rowLabel === metricLabel)) {
-      setMetricLabel(metrics[0].rowLabel);
+    if (!metrics.length) return;
+    const hasLabel = metrics.some((m) => m.label === metricLabel);
+    const hasRowLabel = metrics.some((m) => m.rowLabel === metricLabel);
+    if (!hasLabel && !hasRowLabel) {
+      setMetricLabel(metrics[0].label);
+    } else if (!hasLabel && hasRowLabel) {
+      const match = metrics.find((m) => m.rowLabel === metricLabel);
+      if (match) setMetricLabel(match.label);
     }
   }, [metrics, metricLabel]);
 
   useEffect(() => {
-    if (sectionKey === 'ratiosTable' && metrics.some((m) => m.rowLabel === 'ROE %')) {
-      setMetricLabel('ROE %');
+    if (sectionKey === 'ratiosTable') {
+      const roe = metrics.find((m) => m.rowLabel === 'ROE %');
+      if (roe) setMetricLabel(roe.label);
     }
   }, [sectionKey, metrics]);
 
@@ -124,6 +134,8 @@ export default function ScreenerCompanyCompare({ results }) {
     const nums = ranked.map((r) => r.numeric).filter((n) => n != null);
     return nums.length ? Math.max(...nums) : 1;
   }, [ranked]);
+
+  const metricTitle = formatMetricDisplayName(metricLabel);
 
   const presetMetrics = presetKey ? COMPARE_PRESETS[presetKey]?.metrics || [] : [];
 
@@ -205,6 +217,8 @@ export default function ScreenerCompanyCompare({ results }) {
 
       <HeaderRatiosPanel ratioRows={headerRatios} validCount={valid.length} />
 
+      <ScreenerCompareMultiTrend results={results} />
+
       <div className="fund-compare-mode-toggle" style={{ marginBottom: '10px' }}>
         <button
           type="button"
@@ -263,7 +277,7 @@ export default function ScreenerCompanyCompare({ results }) {
               style={{ ...selectStyle, display: 'block', marginTop: '4px', minWidth: '160px' }}
             >
               {metrics.map((m) => (
-                <option key={m.label} value={m.rowLabel}>{m.label}</option>
+                <option key={m.label} value={m.label}>{m.label}</option>
               ))}
             </select>
           </label>
@@ -386,7 +400,7 @@ export default function ScreenerCompanyCompare({ results }) {
               <tr>
                 <th>Metric</th>
                 {valid.map((r) => (
-                  <th key={r.ticker} className="mono">{r.screener_symbol}</th>
+                  <th key={r.ticker} className="mono">{r.screener_symbol || r.data?.symbol}</th>
                 ))}
               </tr>
             </thead>
@@ -433,7 +447,7 @@ export default function ScreenerCompanyCompare({ results }) {
                   <th>Rank</th>
                   <th>Company</th>
                   <th>Symbol</th>
-                  <th>{metricLabel}</th>
+                  <th>{metricTitle}</th>
                   <th>Visual</th>
                 </tr>
               </thead>
@@ -469,7 +483,7 @@ export default function ScreenerCompanyCompare({ results }) {
           {valid.length > 1 && (
             <div style={{ marginTop: '12px' }}>
               <h4 style={{ fontSize: '11px', fontWeight: '600', marginBottom: '6px' }}>
-                Side-by-side: {metricLabel} ({activePeriod})
+                Side-by-side: {metricTitle} ({activePeriod})
               </h4>
               <div className="comparison-table-wrapper">
                 <table className="custom-table" style={{ fontSize: '12px' }}>

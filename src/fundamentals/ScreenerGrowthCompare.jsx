@@ -7,6 +7,19 @@ const GROWTH_LABELS = {
   roe: 'Return on Equity',
 };
 
+const PERIOD_ORDER = ['10 Years', '5 Years', '3 Years', '1 Year', 'TTM'];
+
+function sortGrowthPeriods(periods) {
+  return [...periods].sort((a, b) => {
+    const ai = PERIOD_ORDER.indexOf(a);
+    const bi = PERIOD_ORDER.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return String(a).localeCompare(String(b));
+  });
+}
+
 export default function ScreenerGrowthCompare({ results }) {
   const valid = results.filter((r) => !r.error && r.data?.growth);
   if (valid.length < 2) return null;
@@ -17,7 +30,7 @@ export default function ScreenerGrowthCompare({ results }) {
       Object.keys(g || {}).forEach((k) => periodKeys.add(k));
     });
   });
-  const periods = Array.from(periodKeys);
+  const periods = sortGrowthPeriods(Array.from(periodKeys));
 
   const types = Object.entries(GROWTH_LABELS).filter(([key]) =>
     valid.some((r) => r.data.growth[key] && Object.keys(r.data.growth[key]).length > 0),

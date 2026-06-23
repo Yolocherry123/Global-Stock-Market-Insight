@@ -281,6 +281,35 @@ def get_macd_history(df, days=30):
         print(f"Error computing MACD history: {e}")
         return []
 
+def get_rsi_history(df, days=30):
+    if len(df) < 20:
+        return []
+    try:
+        close = df['Close']
+        delta = close.diff()
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
+        avg_gain = gain.rolling(window=14).mean()
+        avg_loss = loss.rolling(window=14).mean()
+        avg_loss_cleaned = avg_loss.replace(0, 1e-9)
+        rs = avg_gain / avg_loss_cleaned
+        rsi = 100 - (100 / (1 + rs))
+
+        history_points = []
+        sub_df = df.tail(days)
+        for d in sub_df.index:
+            val = rsi.loc[d]
+            if not math.isnan(val):
+                history_points.append({
+                    "date": d.strftime('%Y-%m-%d'),
+                    "rsi": round(float(val), 2),
+                })
+        return history_points
+    except Exception as e:
+        print(f"Error computing RSI history: {e}")
+        return []
+
+
 def get_volume_history(df, days=30):
     if len(df) < 35:
         return []
@@ -604,9 +633,75 @@ Headlines:
     return _analyze_sentiment_lexicon(news_list)
 
 
-def run_monte_carlo(tickers, weights, days=252, simulations=100):
+BACKTEST_MARKETS = {
+    "us": {
+        "benchmark": "^GSPC",
+        "benchmark_label": "S&P 500",
+        "risk_free_rate": 0.04,
+        "trading_days": 252,
+        "suffix": "",
+        "currency": "USD",
+    },
+    "nse": {
+        "benchmark": "^NSEI",
+        "benchmark_label": "Nifty 50",
+        "risk_free_rate": 0.065,
+        "trading_days": 248,
+        "suffix": ".NS",
+        "currency": "INR",
+    },
+    "bse": {
+        "benchmark": "^BSESN",
+        "benchmark_label": "Sensex",
+        "risk_free_rate": 0.065,
+        "trading_days": 248,
+        "suffix": ".BO",
+        "currency": "INR",
+    },
+}
+
+
+BACKTEST_HISTORY_PERIOD = "max"
+BACKTEST_CHART_MAX_POINTS = 100
+
+
+def get_backtest_profile(market):
+    key = (market or "us").lower()
+    if key not in BACKTEST_MARKETS:
+        raise ValueError(f"Unknown market '{market}'. Use one of: us, nse, bse.")
+    return BACKTEST_MARKETS[key]
+
+
+def display_backtest_ticker(ticker):
+    raw = (ticker or "").strip().upper()
+    for suffix in (".NS", ".BO", ".NSE", ".BSE"):
+        if raw.endswith(suffix):
+            return raw[: -len(suffix)]
+    return raw
+
+
+def normalize_backtest_ticker(ticker, market):
+    raw = (ticker or "").strip().upper()
+    if not raw:
+        raise ValueError("Ticker cannot be empty.")
+    profile = get_backtest_profile(market)
+    suffix = profile["suffix"]
+    if suffix == "":
+        return raw
+    if raw.endswith(".NS"):
+        if market == "bse":
+            raise ValueError(f"Ticker {raw} is an NSE symbol but market is BSE (Sensex). Use .BO symbols or switch to Nifty (NSE).")
+        return raw
+    if raw.endswith(".BO"):
+        if market == "nse":
+            raise ValueError(f"Ticker {raw} is a BSE symbol but market is NSE (Nifty 50). Use .NS symbols or switch to Sensex (BSE).")
+        return raw
+    return raw + suffix
+
+
+def run_monte_carlo(tickers, weights, days=252, simulations=100, history_period=BACKTEST_HISTORY_PERIOD):
     try:
-        data = yf.download(tickers, period="1y", interval="1d", progress=False)['Close']
+        data = yf.download(tickers, period=history_period, interval="1d", progress=False)['Close']
         if data.empty:
             return []
         
@@ -655,12 +750,18 @@ def run_monte_carlo(tickers, weights, days=252, simulations=100):
         print(f"Error in Monte Carlo simulation: {e}")
         return []
 
-def stress_test_portfolio(tickers, weights):
+def stress_test_portfolio(tickers, weights, market="us"):
     shocks = [
         {"name": "2008 Great Financial Crisis", "start": "2007-10-01", "end": "2009-03-31"},
         {"name": "2020 COVID Market Crash", "start": "2020-02-01", "end": "2020-04-30"},
-        {"name": "2022 Inflation Rate Hikes", "start": "2022-01-01", "end": "2022-12-31"}
+        {"name": "2022 Inflation Rate Hikes", "start": "2022-01-01", "end": "2022-12-31"},
     ]
+    if market in ("nse", "bse"):
+        shocks.append({
+            "name": "2016 India Demonetization",
+            "start": "2016-11-01",
+            "end": "2017-02-28",
+        })
     results = []
     for s in shocks:
         try:
@@ -693,27 +794,47 @@ def stress_test_portfolio(tickers, weights):
             results.append({"name": s["name"], "period": "Failed to fetch", "return_pct": 0, "max_drawdown_pct": 0})
     return results
 
-def simulate_portfolio(allocations, transaction_fee_bps=0.0, slippage_pct=0.0):
+def simulate_portfolio(allocations, transaction_fee_bps=0.0, slippage_pct=0.0, market="us"):
     """
     Allocations is a list: [{"ticker": "AAPL", "weight": 50.0}, ...]
     Weights sum to 100.0.
-    Returns portfolio stats, stress tests, Monte Carlo paths, and 1-year chart comparison points.
+    Returns portfolio stats, stress tests, Monte Carlo paths, and multi-year chart comparison points.
     """
+    profile = get_backtest_profile(market)
+    benchmark_ticker = profile["benchmark"]
+    benchmark_label = profile["benchmark_label"]
+    rf_annual = profile["risk_free_rate"]
+    trading_days = profile["trading_days"]
+    currency = profile["currency"]
+    market_key = market.lower() if market else "us"
+
+    empty_response = {
+        "market": market_key,
+        "benchmark_label": benchmark_label,
+        "currency": currency,
+        "history_period": BACKTEST_HISTORY_PERIOD,
+        "metrics": {},
+        "chart_points": [],
+        "stock_series": [],
+        "monte_carlo": [],
+        "stress_tests": [],
+    }
+
     if not allocations:
-        return {"metrics": {}, "chart_points": [], "monte_carlo": [], "stress_tests": []}
-        
+        return empty_response
+
     try:
-        tickers = [a['ticker'] for a in allocations]
-        weights = np.array([a['weight'] for a in allocations]) / 100.0
-        
+        tickers = [normalize_backtest_ticker(a["ticker"], market_key) for a in allocations]
+        weights = np.array([a["weight"] for a in allocations]) / 100.0
+
         # Download historical data
-        data = yf.download(tickers + ["^GSPC"], period="1y", interval="1d", progress=False)['Close']
+        data = yf.download(tickers + [benchmark_ticker], period=BACKTEST_HISTORY_PERIOD, interval="1d", progress=False)["Close"]
         if data.empty:
-            return {"metrics": {}, "chart_points": [], "monte_carlo": [], "stress_tests": []}
-            
+            return empty_response
+
         # Separate stock data and benchmark data
         stock_data = data[tickers].dropna()
-        benchmark_data = data["^GSPC"].dropna()
+        benchmark_data = data[benchmark_ticker].dropna()
         
         # Calculate daily log returns
         stock_returns = np.log(stock_data / stock_data.shift(1)).dropna()
@@ -733,39 +854,46 @@ def simulate_portfolio(allocations, transaction_fee_bps=0.0, slippage_pct=0.0):
         # Calculate cumulative values (starting at cash adjusted for initial fees)
         port_cum = np.exp(portfolio_returns.cumsum()) * starting_capital
         bench_cum = np.exp(aligned["benchmark"].cumsum()) * 10000.0
+        stock_cum = {
+            ticker: np.exp(aligned[ticker].cumsum()) * 10000.0
+            for ticker in tickers
+        }
+        weight_by_ticker = {
+            normalize_backtest_ticker(a["ticker"], market_key): float(a["weight"])
+            for a in allocations
+        }
         
         # Metrics calculations
         cum_ret = ((port_cum.iloc[-1] - 10000.0) / 10000.0) * 100.0
         bench_ret = ((bench_cum.iloc[-1] - 10000.0) / 10000.0) * 100.0
         alpha = cum_ret - bench_ret
         
-        # Sharpe Ratio (annualized, 4% risk-free rate)
-        rf_annual = 0.04
-        rf_daily = rf_annual / 252.0
+        # Sharpe Ratio (annualized, market risk-free rate)
+        rf_daily = rf_annual / float(trading_days)
         excess_returns = portfolio_returns - rf_daily
         daily_std = portfolio_returns.std()
-        portfolio_vol = daily_std * np.sqrt(252.0) * 100.0
-        
+        portfolio_vol = daily_std * np.sqrt(float(trading_days)) * 100.0
+
         if daily_std > 0:
-            sharpe = (excess_returns.mean() / daily_std) * np.sqrt(252.0)
+            sharpe = (excess_returns.mean() / daily_std) * np.sqrt(float(trading_days))
         else:
             sharpe = 0.0
-            
+
         # Sortino Ratio (annualized)
         downside_returns = excess_returns[excess_returns < 0]
         if not downside_returns.empty:
             downside_std = np.sqrt((downside_returns ** 2).mean())
-            sortino = (excess_returns.mean() / downside_std) * np.sqrt(252.0) if downside_std > 0 else 0.0
+            sortino = (excess_returns.mean() / downside_std) * np.sqrt(float(trading_days)) if downside_std > 0 else 0.0
         else:
             sortino = 0.0
-            
-        # Portfolio Beta vs. S&P 500
+
+        # Portfolio Beta vs benchmark
         cov_val = portfolio_returns.cov(aligned["benchmark"])
         bench_var = aligned["benchmark"].var()
         portfolio_beta = cov_val / bench_var if bench_var > 0 else 1.0
-        
+
         # Treynor Ratio
-        ann_return = portfolio_returns.mean() * 252.0
+        ann_return = portfolio_returns.mean() * float(trading_days)
         treynor = (ann_return - rf_annual) / portfolio_beta if portfolio_beta != 0 else 0.0
         
         # Historical Value at Risk (VaR 95% 1-day)
@@ -780,11 +908,11 @@ def simulate_portfolio(allocations, transaction_fee_bps=0.0, slippage_pct=0.0):
         drawdown = (peak - port_cum) / peak
         max_dd = drawdown.max() * 100.0
         
-        # Format chart points (sample down to ~50 points)
+        # Format chart points (sample down for readability)
         chart_points = []
         date_index = list(port_cum.index)
         
-        sample_step = max(1, len(date_index) // 50)
+        sample_step = max(1, len(date_index) // BACKTEST_CHART_MAX_POINTS)
         
         for idx in range(0, len(date_index), sample_step):
             d = date_index[idx]
@@ -801,14 +929,47 @@ def simulate_portfolio(allocations, transaction_fee_bps=0.0, slippage_pct=0.0):
                 "portfolio": round(float(port_cum.iloc[-1]), 2),
                 "benchmark": round(float(bench_cum.iloc[-1]), 2)
             })
+
+        stock_series = []
+        for ticker in tickers:
+            series_points = []
+            cum_series = stock_cum[ticker]
+            for idx in range(0, len(date_index), sample_step):
+                d = date_index[idx]
+                series_points.append({
+                    "date": d.strftime("%Y-%m-%d"),
+                    "value": round(float(cum_series.iloc[idx]), 2),
+                })
+            if len(date_index) - 1 not in range(0, len(date_index), sample_step):
+                d = date_index[-1]
+                series_points.append({
+                    "date": d.strftime("%Y-%m-%d"),
+                    "value": round(float(cum_series.iloc[-1]), 2),
+                })
+            stock_series.append({
+                "ticker": ticker,
+                "label": display_backtest_ticker(ticker),
+                "weight": weight_by_ticker.get(ticker, 0.0),
+                "points": series_points,
+            })
+        stock_series.sort(key=lambda s: s["weight"], reverse=True)
             
         # Run Monte Carlo simulation
-        mc_points = run_monte_carlo(tickers, weights)
-        
+        mc_points = run_monte_carlo(tickers, weights, days=trading_days)
+
         # Run Stress Testing
-        stress_tests = stress_test_portfolio(tickers, weights)
-            
+        stress_tests = stress_test_portfolio(tickers, weights, market=market_key)
+
+        history_start = port_cum.index[0].strftime("%Y-%m-%d")
+        history_end = port_cum.index[-1].strftime("%Y-%m-%d")
+
         return {
+            "market": market_key,
+            "benchmark_label": benchmark_label,
+            "currency": currency,
+            "history_period": BACKTEST_HISTORY_PERIOD,
+            "history_start_date": history_start,
+            "history_end_date": history_end,
             "metrics": {
                 "cumulative_return_pct": round(float(cum_ret), 2),
                 "benchmark_return_pct": round(float(bench_ret), 2),
@@ -823,14 +984,17 @@ def simulate_portfolio(allocations, transaction_fee_bps=0.0, slippage_pct=0.0):
                 "portfolio_volatility_pct": round(float(portfolio_vol), 2)
             },
             "chart_points": chart_points,
+            "stock_series": stock_series,
             "monte_carlo": mc_points,
             "stress_tests": stress_tests
         }
+    except ValueError:
+        raise
     except Exception as e:
         print(f"Error in backtesting simulation: {e}")
         import traceback
         traceback.print_exc()
-        return {"metrics": {}, "chart_points": [], "monte_carlo": [], "stress_tests": []}
+        return empty_response
 
 
 def get_intraday_volatility(ticker_obj, target_date):
@@ -1452,6 +1616,44 @@ def generate_fundamentals_summary(tickers):
     }
 
 
+def fetch_ticker_news(symbol, limit=8):
+    news_articles = []
+    try:
+        raw_news = yf.Ticker(symbol).news or []
+        for n in raw_news[:limit]:
+            content = n.get("content", {})
+            provider = content.get("provider", {})
+
+            title = content.get("title", n.get("title", ""))
+            publisher = provider.get("displayName", n.get("publisher", ""))
+            link = content.get("canonicalUrl", {}).get("url", n.get("link", ""))
+
+            pub_date_str = content.get("pubDate", "")
+            if pub_date_str:
+                try:
+                    dt = datetime.datetime.strptime(pub_date_str, "%Y-%m-%dT%H:%M:%SZ")
+                    pub_time = dt.strftime('%Y-%m-%d %H:%M')
+                except Exception:
+                    pub_time = pub_date_str[:16].replace('T', ' ')
+            else:
+                pub_time_sec = n.get("providerPublishTime")
+                if pub_time_sec:
+                    pub_time = datetime.datetime.fromtimestamp(pub_time_sec).strftime('%Y-%m-%d %H:%M')
+                else:
+                    pub_time = "Recent"
+
+            if title:
+                news_articles.append({
+                    "title": title,
+                    "publisher": publisher,
+                    "link": link,
+                    "publish_time": pub_time
+                })
+    except Exception as e:
+        print(f"Error parsing news for {symbol}: {e}")
+    return news_articles
+
+
 def _enrich_movers_list(raw_movers, actual_target, index_hist):
     return [_enrich_mover_detail(m, actual_target, index_hist) for m in raw_movers]
 
@@ -1547,39 +1749,7 @@ def _enrich_mover_detail(m, actual_target, index_hist):
     company_info = fetch_company_fundamentals(symbol)
     company_info.pop("_error", None)
 
-    news_articles = []
-    try:
-        raw_news = ticker_obj.news
-        for n in raw_news:
-            content = n.get("content", {})
-            provider = content.get("provider", {})
-
-            title = content.get("title", n.get("title", ""))
-            publisher = provider.get("displayName", n.get("publisher", ""))
-            link = content.get("canonicalUrl", {}).get("url", n.get("link", ""))
-
-            pub_date_str = content.get("pubDate", "")
-            if pub_date_str:
-                try:
-                    dt = datetime.datetime.strptime(pub_date_str, "%Y-%m-%dT%H:%M:%SZ")
-                    pub_time = dt.strftime('%Y-%m-%d %H:%M')
-                except Exception:
-                    pub_time = pub_date_str[:16].replace('T', ' ')
-            else:
-                pub_time_sec = n.get("providerPublishTime")
-                if pub_time_sec:
-                    pub_time = datetime.datetime.fromtimestamp(pub_time_sec).strftime('%Y-%m-%d %H:%M')
-                else:
-                    pub_time = "Recent"
-
-            news_articles.append({
-                "title": title,
-                "publisher": publisher,
-                "link": link,
-                "publish_time": pub_time
-            })
-    except Exception as e:
-        print(f"Error parsing news for {symbol}: {e}")
+    news_articles = fetch_ticker_news(symbol)
 
     news_sentiment = analyze_sentiment(news_articles)
     signals = generate_technical_signals(hist_1y)
@@ -1623,6 +1793,7 @@ def _enrich_mover_detail(m, actual_target, index_hist):
         "garman_klass_vol_pct": gk_vol_val,
         "macd_history": get_macd_history(hist_1y.loc[hist_1y.index <= mover_date], days=30),
         "volume_history": get_volume_history(hist_1y.loc[hist_1y.index <= mover_date], days=30),
+        "rsi_history": get_rsi_history(hist_1y.loc[hist_1y.index <= mover_date], days=30),
         "sentiment_analysis": news_sentiment,
         "trading_signals": signals
     }
@@ -1665,8 +1836,21 @@ def get_exchange_details(exchange_id):
         "gainers": detailed_gainers,
         "losers": detailed_losers,
         "movers": detailed_gainers,
+        "exchange_news": fetch_ticker_news(index_ticker, limit=8),
         "expert_opinion": expert_commentary
     }
+
+
+def get_exchange_research(exchange_id):
+    details = get_exchange_details(exchange_id)
+    return {
+        "exchange_id": details["exchange_id"],
+        "exchange_name": details["exchange_name"],
+        "trading_day": details["trading_day"],
+        "exchange_news": details.get("exchange_news", []),
+        "expert_opinion": details["expert_opinion"],
+    }
+
 
 def get_macro_news():
     rates = {
