@@ -10,6 +10,7 @@ import re
 import requests
 import traceback
 import screener
+import screener_in
 
 CROSS_ASSET_TICKERS = {
     "gold": "GC=F",
@@ -1269,13 +1270,22 @@ def fetch_company_fundamentals(symbol):
         }
 
 
-def _build_ticker_exchange_map():
+FUNDAMENTALS_ALLOWED_EXCHANGES = ("nse", "bse")
+
+
+def _build_fundamentals_ticker_exchange_map():
     config = load_config()
     mapping = {}
     for ex in config.get("exchanges", []):
+        if ex["id"] not in FUNDAMENTALS_ALLOWED_EXCHANGES:
+            continue
         for ticker in ex.get("tickers", []):
             mapping[ticker] = ex["id"]
     return mapping
+
+
+def _get_fundamentals_allowed_tickers():
+    return set(_build_fundamentals_ticker_exchange_map().keys())
 
 
 def get_fundamentals_catalog():
@@ -1283,11 +1293,76 @@ def get_fundamentals_catalog():
     exchanges = [
         {"id": ex["id"], "name": ex["name"], "tickers": ex.get("tickers", [])}
         for ex in config.get("exchanges", [])
+        if ex["id"] in FUNDAMENTALS_ALLOWED_EXCHANGES
     ]
     return {"exchanges": exchanges}
 
 
+def _fetch_one_fundamental(user_ticker, ticker_map=None):
+    if ticker_map is None:
+        ticker_map = _build_fundamentals_ticker_exchange_map()
+    screener_symbol = screener_in.ticker_to_symbol(user_ticker)
+    exchange_id = ticker_map.get(user_ticker) or screener_in.infer_exchange_id(user_ticker)
+    try:
+        data = screener_in.fetch_company(user_ticker)
+        return {
+            "ticker": user_ticker,
+            "screener_symbol": screener_symbol,
+            "exchange_id": exchange_id,
+            "data": data,
+            "error": None,
+        }
+    except Exception as exc:
+        msg = str(exc)
+        if "429" in msg or "rate limit" in msg.lower():
+            msg = (
+                "Screener.in rate limit reached. Please wait 60 seconds "
+                "and try again with fewer tickers."
+            )
+        return {
+            "ticker": user_ticker,
+            "screener_symbol": screener_symbol,
+            "exchange_id": exchange_id,
+            "data": None,
+            "error": msg,
+        }
+
+
+def get_fundamental_company(ticker):
+    user_ticker = (ticker or "").strip()
+    if not user_ticker:
+        raise ValueError("Ticker is required")
+    return _fetch_one_fundamental(user_ticker)
+
+
 def compare_fundamentals(tickers):
+    max_tickers = 5
+    seen = set()
+    ordered = []
+    for raw in tickers:
+        symbol = (raw or "").strip()
+        if not symbol or symbol in seen:
+            continue
+        screener_symbol = screener_in.ticker_to_symbol(symbol)
+        if not screener_symbol:
+            continue
+        seen.add(symbol)
+        ordered.append(symbol)
+        if len(ordered) >= max_tickers:
+            break
+
+    ticker_map = _build_fundamentals_ticker_exchange_map()
+
+    results = []
+    for i, ticker in enumerate(ordered):
+        if i > 0:
+            time.sleep(1.2)
+        results.append(_fetch_one_fundamental(ticker, ticker_map))
+
+    return {"results": results}
+
+
+def generate_fundamentals_summary(tickers):
     max_tickers = 5
     seen = set()
     ordered = []
@@ -1300,26 +1375,81 @@ def compare_fundamentals(tickers):
         if len(ordered) >= max_tickers:
             break
 
-    ticker_map = _build_ticker_exchange_map()
     results = []
-    for symbol in ordered:
-        info = fetch_company_fundamentals(symbol)
-        error = info.pop("_error", None)
-        if error and info.get("marketCap") is None and info.get("sector") == "N/A":
-            results.append({
-                "ticker": symbol,
-                "exchange_id": ticker_map.get(symbol),
-                "info": None,
-                "error": error or "Unable to fetch fundamentals for this ticker.",
-            })
-        else:
-            results.append({
-                "ticker": symbol,
-                "exchange_id": ticker_map.get(symbol),
-                "info": info,
-                "error": None,
-            })
-    return {"results": results}
+    for i, ticker in enumerate(ordered):
+        if i > 0:
+            time.sleep(0.5)
+        results.append(_fetch_one_fundamental(ticker))
+
+    valid = [r for r in results if not r.get("error") and r.get("data")]
+    if not valid:
+        return {
+            "summary": "No fundamental data available for the selected tickers.",
+            "highlights": [],
+            "risks": [],
+            "source": "fallback",
+        }
+
+    context_lines = []
+    for r in valid:
+        d = r["data"]
+        ratios = d.get("ratios") or {}
+        growth = d.get("growth") or {}
+        pros = (d.get("pros") or [])[:3]
+        cons = (d.get("cons") or [])[:3]
+        context_lines.append(f"Company: {d.get('name')} ({r.get('screener_symbol')})")
+        for key in ("ROE", "ROCE", "Stock P/E", "Debt to equity", "Market Cap"):
+            if ratios.get(key):
+                context_lines.append(f"  {key}: {ratios[key]}")
+        for gkey, gdata in growth.items():
+            if gdata:
+                context_lines.append(f"  Growth {gkey}: {gdata}")
+        if pros:
+            context_lines.append(f"  Pros: {'; '.join(pros)}")
+        if cons:
+            context_lines.append(f"  Cons: {'; '.join(cons)}")
+
+    prompt = (
+        "You are a financial analyst. Based on the following Indian stock fundamental data "
+        "from Screener.in, write a concise comparative analysis.\n\n"
+        + "\n".join(context_lines)
+        + "\n\nRespond in JSON only with keys: summary (2-4 sentences), highlights (array of 3-5 "
+        "bullet strings), risks (array of 2-4 bullet strings). No markdown."
+    )
+
+    gemini_text = _call_gemini_text(prompt, timeout=20)
+    parsed = _parse_gemini_json(gemini_text)
+    if parsed and parsed.get("summary"):
+        return {
+            "summary": parsed.get("summary", ""),
+            "highlights": parsed.get("highlights") or [],
+            "risks": parsed.get("risks") or [],
+            "source": "gemini",
+        }
+
+    highlights = []
+    risks = []
+    names = [r["data"].get("name") for r in valid]
+    highlights.append(f"Compared {len(valid)} companies: {', '.join(names)}.")
+    for r in valid:
+        d = r["data"]
+        ratios = d.get("ratios") or {}
+        roe = ratios.get("ROE")
+        if roe:
+            highlights.append(f"{d.get('name')}: ROE {roe}")
+        cons = d.get("cons") or []
+        if cons:
+            risks.append(f"{d.get('name')}: {cons[0]}")
+
+    return {
+        "summary": (
+            f"Fundamental comparison of {', '.join(names)} based on Screener.in data. "
+            "Review key ratios, growth trends, and pros/cons for investment decisions."
+        ),
+        "highlights": highlights[:5],
+        "risks": risks[:4],
+        "source": "fallback",
+    }
 
 
 def _enrich_movers_list(raw_movers, actual_target, index_hist):

@@ -1171,3 +1171,501 @@ body {
   opacity: 1;
 }
 
+/* Screener.in Fundamentals */
+.fund-section-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.fund-table-scroll {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.fund-financial-table .fund-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  background: rgba(12, 17, 33, 0.98);
+  min-width: 140px;
+  max-width: 200px;
+}
+
+.fund-financial-table thead .fund-sticky-col {
+  z-index: 11;
+}
+
+.fund-row-child td {
+  color: var(--text-secondary);
+  font-size: 10.5px;
+}
+
+.fund-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+  font-family: inherit;
+}
+
+.fund-expand-btn:hover {
+  color: var(--accent-cyan);
+}
+
+.fund-pros-cons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.fund-pros-box {
+  background: rgba(0, 200, 83, 0.06);
+  border: 1px solid rgba(0, 200, 83, 0.2);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.fund-cons-box {
+  background: rgba(255, 23, 68, 0.06);
+  border: 1px solid rgba(255, 23, 68, 0.2);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.fund-growth-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.fund-growth-card {
+  padding: 10px 12px;
+}
+
+.fund-table-view-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fund-interleaved-table .fund-sticky-col-2 {
+  position: sticky;
+  left: 140px;
+  z-index: 5;
+  background: rgba(12, 17, 33, 0.98);
+  min-width: 88px;
+}
+
+.fund-interleaved-table thead .fund-sticky-col-2 {
+  z-index: 11;
+}
+
+.fund-compare-group-start td {
+  border-top: 2px solid rgba(255, 255, 255, 0.08);
+}
+
+.fund-compare-group-start:first-child td {
+  border-top: none;
+}
+
+.fund-group-header td {
+  background: rgba(255, 255, 255, 0.02);
+  padding-top: 10px;
+  padding-bottom: 4px;
+}
+
+.fund-compare-company-row td {
+  font-size: 10.5px;
+}
+
+.fund-company-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.fund-coverage-ok {
+  color: var(--accent-cyan);
+}
+
+.fund-coverage-warn {
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 4px;
+  padding: 6px 8px;
+  color: #fbbf24;
+}
+
+.fund-coverage-toggle {
+  background: none;
+  border: none;
+  color: var(--accent-cyan);
+  cursor: pointer;
+  font-size: 10px;
+  text-decoration: underline;
+  padding: 0;
+  margin-left: 4px;
+}
+
+.fund-partial-badge {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  vertical-align: middle;
+}
+
+.fund-row-missing td {
+  background: rgba(255, 23, 68, 0.04);
+}
+
+.fund-not-available {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 10px;
+  text-align: center;
+}
+
+.fund-partial-label-row td {
+  background: rgba(251, 191, 36, 0.04);
+  padding-top: 6px;
+  padding-bottom: 2px;
+}
+
+.fund-ratio-best {
+  font-weight: 700;
+}
+
+.fund-ratio-worst {
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.fund-trend-chart {
+  width: 100%;
+}
+
+.fund-peer-actions {
+  font-size: 10px;
+  padding: 3px 8px;
+}
+
+.fund-compare-bar-track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.fund-compare-bar {
+  height: 100%;
+  background: var(--accent-cyan);
+  border-radius: 2px;
+  min-width: 2px;
+}
+
+.fund-rank-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(0, 229, 255, 0.15);
+  color: var(--accent-cyan);
+}
+
+.fund-rank-badge.rank-1 {
+  background: rgba(0, 230, 118, 0.2);
+  color: var(--color-green);
+}
+
+.fund-slot-status {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fund-slot-loading {
+  background: rgba(0, 229, 255, 0.12);
+  color: var(--accent-cyan);
+}
+
+.fund-slot-done {
+  background: rgba(0, 230, 118, 0.12);
+  color: var(--color-green);
+}
+
+.fund-slot-error {
+  background: rgba(255, 23, 68, 0.12);
+  color: var(--color-red);
+}
+
+.fund-retry-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+}
+
+.fund-derived-row td {
+  color: var(--text-secondary);
+  font-style: italic;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.fund-period-focus {
+  background: rgba(0, 229, 255, 0.08) !important;
+  box-shadow: inset 0 -2px 0 var(--accent-cyan);
+}
+
+.fund-ai-summary {
+  border-left: 2px solid var(--accent-cyan);
+}
+
+.fund-autocomplete-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  background: var(--bg-secondary, #1a1a2e);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.fund-autocomplete-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.fund-autocomplete-list li:hover,
+.fund-autocomplete-list li.active {
+  background: rgba(0, 229, 255, 0.1);
+}
+
+.fund-exchange-badge {
+  font-size: 9px;
+  color: var(--text-secondary);
+  padding: 1px 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+}
+
+.fund-financial-table {
+  font-size: 12px;
+}
+
+.fund-compare-mode-toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.fund-compare-mode-toggle .tab-btn {
+  font-size: 10px;
+  padding: 4px 10px;
+}
+
+.fund-ratio-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fund-ratio-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.fund-ratio-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: help;
+  line-height: 1;
+}
+
+.fund-ratio-info-btn:hover,
+.fund-ratio-info-btn:focus {
+  color: var(--accent-cyan);
+  outline: none;
+}
+
+.fund-ratio-info-tooltip {
+  z-index: 10000;
+  min-width: 200px;
+  max-width: 280px;
+  padding: 8px 10px;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--text-primary);
+  background: var(--bg-secondary, #1a1a2e);
+  border: 1px solid var(--accent-cyan);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  white-space: normal;
+  pointer-events: none;
+}
+
+.fund-ratio-info-tooltip--portal {
+  position: fixed;
+}
+
+.fund-ratio-info-tooltip--top::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--accent-cyan);
+}
+
+.fund-ratio-info-tooltip--bottom::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-bottom-color: var(--accent-cyan);
+}
+
+.fund-selection-panel {
+  overflow: visible;
+}
+
+.fund-stock-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: visible;
+}
+
+.fund-stock-row {
+  display: grid;
+  grid-template-columns: 24px 64px minmax(160px, 1fr) minmax(100px, 120px) auto auto;
+  align-items: center;
+  gap: 8px;
+  overflow: visible;
+}
+
+@media (max-width: 720px) {
+  .fund-stock-row {
+    grid-template-columns: 24px 64px 1fr;
+    grid-template-areas:
+      "num ex search"
+      ". pick pick"
+      ". status remove";
+  }
+  .fund-stock-label { grid-area: num; }
+  .fund-exchange-select { grid-area: ex; }
+  .fund-ticker-search { grid-area: search; }
+  .fund-quick-pick { grid-area: pick; width: 100%; }
+}
+
+.fund-stock-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.fund-exchange-select {
+  font-size: 11px;
+  padding: 6px 4px;
+}
+
+.fund-quick-pick {
+  font-size: 11px;
+  padding: 6px 8px;
+}
+
+.fund-ticker-search {
+  position: relative;
+  min-width: 0;
+}
+
+.fund-ticker-search-icon {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-secondary);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.fund-ticker-input {
+  padding-left: 26px !important;
+  width: 100%;
+}
+
+.fund-autocomplete-hint,
+.fund-autocomplete-free {
+  font-size: 10px;
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.fund-autocomplete-free {
+  cursor: pointer;
+  border-top: 1px solid var(--border-color);
+  color: var(--accent-cyan);
+}
+
+.fund-autocomplete-free:hover {
+  background: rgba(0, 229, 255, 0.08);
+}
+
+.fund-trend-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.fund-filter-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+

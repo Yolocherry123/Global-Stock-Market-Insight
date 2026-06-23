@@ -1,4 +1,5 @@
 import datetime
+import re
 import time
 import yfinance as yf
 
@@ -61,9 +62,28 @@ def _is_real_stock(symbol, quote):
     # 2. Check quote fields if available
     long_name = (quote.get("longName") or "").lower()
     short_name = (quote.get("shortName") or "").lower()
+    combined_name = f"{long_name} {short_name}"
+
     for word in ("warrant", "right", "preferred", "unit"):
         if word in long_name or word in short_name:
             return False
+
+    # ETFs and funds are often tagged as EQUITY by Yahoo; filter by name instead.
+    for phrase in (
+        "exchange traded fund",
+        "mutual fund",
+        "index fund",
+        "closed-end fund",
+        "closed end fund",
+    ):
+        if phrase in combined_name:
+            return False
+    if re.search(r"\betf\b", combined_name):
+        return False
+
+    quote_type = (quote.get("quoteType") or "").upper()
+    if quote_type and quote_type not in ("EQUITY", ""):
+        return False
 
     return True
 

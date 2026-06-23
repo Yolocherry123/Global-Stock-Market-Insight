@@ -116,12 +116,37 @@ def get_fundamentals_catalog():
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/fundamentals/company/{ticker}")
+def get_fundamental_company(ticker: str):
+    try:
+        return analyst.get_fundamental_company(ticker)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/fundamentals/compare")
 def post_fundamentals_compare(req: FundamentalsCompareRequest):
     try:
         if not req.tickers:
             raise HTTPException(status_code=400, detail="At least one ticker is required.")
         return analyst.compare_fundamentals(req.tickers)
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+class FundamentalsSummaryRequest(BaseModel):
+    tickers: List[str]
+
+@app.post("/api/fundamentals/summary")
+def post_fundamentals_summary(req: FundamentalsSummaryRequest):
+    try:
+        if not req.tickers:
+            raise HTTPException(status_code=400, detail="At least one ticker is required.")
+        return analyst.generate_fundamentals_summary(req.tickers)
     except HTTPException:
         raise
     except Exception as e:

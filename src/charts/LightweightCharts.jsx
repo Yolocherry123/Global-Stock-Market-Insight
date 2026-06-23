@@ -276,3 +276,61 @@ export function LightweightBacktestChart({ points }) {
     </div>
   );
 }
+
+export function LightweightFundamentalsChart({ series }) {
+  const containerRef = useRef(null);
+  const chartRef = useRef(null);
+
+  useResizeObserver(containerRef, chartRef);
+
+  useEffect(() => {
+    if (!containerRef.current || !series?.length) return undefined;
+
+    const chart = createChart(containerRef.current, {
+      ...CHART_THEME,
+      width: containerRef.current.clientWidth,
+      height: containerRef.current.clientHeight || 200,
+    });
+    chartRef.current = chart;
+
+    series.forEach((s) => {
+      if (!s.points?.length) return;
+      const color = s.color?.startsWith('var(') ? '#00e5ff' : (s.color || '#00e5ff');
+      const line = chart.addSeries(LineSeries, {
+        color,
+        lineWidth: 2,
+        title: s.label,
+        crosshairMarkerVisible: true,
+        lastValueVisible: true,
+        priceLineVisible: false,
+      });
+      line.setData(s.points);
+    });
+
+    chart.timeScale().fitContent();
+
+    return () => {
+      chart.remove();
+      chartRef.current = null;
+    };
+  }, [series]);
+
+  if (!series?.length || !series.some((s) => s.points?.length)) {
+    return (
+      <div className="text-muted text-center" style={{ paddingTop: '40px', fontSize: '11px' }}>
+        No trend data for selected metric
+      </div>
+    );
+  }
+
+  return (
+    <div className="fund-trend-chart">
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '6px', fontSize: '10px' }}>
+        {series.map((s) => (
+          <span key={s.id} style={{ color: s.color }}>● {s.label}</span>
+        ))}
+      </div>
+      <div ref={containerRef} style={{ width: '100%', height: '200px' }} />
+    </div>
+  );
+}

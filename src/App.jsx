@@ -795,14 +795,26 @@ function SentimentAnalysisPanel({ sentiment }) {
   );
 }
 
-function FundamentalsPanel({ info }) {
+function FundamentalsPanel({ info, onOpenFundamentals }) {
   if (!info) return null;
 
   const items = getFundamentalItems(info);
 
   return (
     <div className="glass-panel" style={{ padding: '8px 12px' }}>
-      <h3 style={{ fontSize: '11.5px', fontWeight: '600', marginBottom: '6px' }}>Fundamental Analysis</h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+        <h3 style={{ fontSize: '11.5px', fontWeight: '600', margin: 0 }}>Fundamental Analysis</h3>
+        {onOpenFundamentals && (
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{ fontSize: '10px', padding: '2px 8px' }}
+            onClick={onOpenFundamentals}
+          >
+            Deep dive on Screener.in →
+          </button>
+        )}
+      </div>
       <div className="metrics-pill-grid">
         {items.map((item) => (
           <div className="metric-pill" key={item.label}>
@@ -1143,6 +1155,13 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const [exchangeDetails, setExchangeDetails] = useState(null);
   const [selectedMover, setSelectedMover] = useState(null);
+  const [fundamentalsSeedTickers, setFundamentalsSeedTickers] = useState(null);
+
+  const openInFundamentals = (ticker) => {
+    const bare = (ticker || '').replace(/\.(NS|BO)$/i, '');
+    setFundamentalsSeedTickers([bare]);
+    setActiveTab('fundamentals');
+  };
   
   const [correlationData, setCorrelationData] = useState(null);
   const [corrType, setCorrType] = useState('contemporaneous');
@@ -1643,7 +1662,10 @@ export default function App() {
                           </p>
                         </div>
 
-                        <FundamentalsPanel info={selectedMover.info} />
+                        <FundamentalsPanel
+                          info={selectedMover.info}
+                          onOpenFundamentals={() => openInFundamentals(selectedMover.ticker)}
+                        />
 
                         {/* Widescreen 3-Chart Column Layout */}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
@@ -2347,7 +2369,11 @@ export default function App() {
 
           {/* TAB 5: FUNDAMENTAL ANALYSIS */}
           {activeTab === 'fundamentals' && (
-            <FundamentalsTab apiBase={API_BASE} />
+            <FundamentalsTab
+              apiBase={API_BASE}
+              initialTickers={fundamentalsSeedTickers}
+              onConsumeSeed={() => setFundamentalsSeedTickers(null)}
+            />
           )}
         </section>
 
