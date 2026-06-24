@@ -1994,3 +1994,135 @@ def get_exchange_comparison_data():
         
     return comparison_data
 
+
+YAHOO_TICKER_SUFFIXES = (
+    ".NS", ".BO", ".SS", ".SZ", ".T", ".PA", ".AS", ".BR",
+    ".HK", ".TW", ".KS", ".KQ", ".TO", ".L",
+)
+
+
+def _get_exchange_config(exchange_id):
+    for ex in load_config().get("exchanges", []):
+        if ex["id"] == exchange_id:
+            return ex
+    return None
+
+
+def get_market_catalog():
+    config = load_config()
+    exchanges = [
+        {"id": ex["id"], "name": ex["name"], "tickers": ex.get("tickers", [])}
+        for ex in config.get("exchanges", [])
+    ]
+    return {"exchanges": exchanges}
+
+
+def resolve_yahoo_symbol(ticker, exchange_id=None):
+    raw = (ticker or "").strip().upper()
+    if not raw:
+        return ""
+
+    upper = raw
+    for suffix in YAHOO_TICKER_SUFFIXES:
+        if upper.endswith(suffix):
+            return upper
+
+    if exchange_id:
+        ex = _get_exchange_config(exchange_id)
+        if ex:
+            suffixes = ex.get("screener", {}).get("ticker_suffixes", [])
+            if suffixes:
+                return raw + suffixes[0]
+            return raw
+
+    config = load_config()
+    for ex in config.get("exchanges", []):
+        for catalog_ticker in ex.get("tickers", []):
+            catalog_upper = catalog_ticker.upper()
+            bare = catalog_upper
+            for suffix in YAHOO_TICKER_SUFFIXES:
+                if catalog_upper.endswith(suffix):
+                    bare = catalog_upper[: -len(suffix)]
+                    break
+            if catalog_upper == upper or bare == upper:
+                return catalog_upper
+    return raw
+
+
+def fetch_watchlist_quotes(items):
+    if not items:
+        return {"quotes": []}
+
+    resolved = []
+    for item in items:
+        ticker = (item.get("ticker") or "").strip().upper()
+        exchange_id = item.get("exchange_id") or item.get("exchangeId") or ""
+        yahoo_symbol = (
+            item.get("yahoo_symbol")
+            or item.get("yahooSymbol")
+            or resolve_yahoo_symbol(ticker, exchange_id)
+        )
+        resolved.append({
+            "ticker": ticker,
+            "exchange_id": exchange_id,
+            "yahoo_symbol": yahoo_symbol,
+            "display_name": item.get("display_name") or item.get("displayName") or ticker,
+        })
+
+    symbols = list({r["yahoo_symbol"] for r in resolved if r["yahoo_symbol"]})
+    quotes_map = {}
+
+    def _quote_from_history(sym, df):
+        if df is None or df.empty:
+            return {"price": None, "change_percent": 0.0}
+        closes = df["Close"].dropna()
+        if closes.empty:
+            return {"price": None, "change_percent": 0.0}
+        current = float(closes.iloc[-1])
+        prev = float(closes.iloc[-2]) if len(closes) >= 2 else current
+        pct = ((current - prev) / prev) * 100 if prev else 0.0
+        return {
+            "price": round(current, 2),
+            "change_percent": round(float(pct), 2),
+        }
+
+    if symbols:
+        try:
+            batch = yf.download(
+                symbols,
+                period="5d",
+                interval="1d",
+                group_by="ticker",
+                progress=False,
+                threads=True,
+            )
+            for sym in symbols:
+                try:
+                    if len(symbols) == 1:
+                        df = batch.dropna(subset=["Close"])
+                    elif hasattr(batch.columns, "levels") and sym in batch.columns.levels[0]:
+                        df = batch[sym].dropna(subset=["Close"])
+                    else:
+                        df = yf.Ticker(sym).history(period="5d", interval="1d")
+                    quotes_map[sym] = _quote_from_history(sym, df)
+                except Exception as exc:
+                    quotes_map[sym] = {"price": None, "change_percent": 0.0, "error": str(exc)}
+        except Exception as exc:
+            print(f"Watchlist batch download failed: {exc}")
+            for sym in symbols:
+                try:
+                    df = yf.Ticker(sym).history(period="5d", interval="1d")
+                    quotes_map[sym] = _quote_from_history(sym, df)
+                except Exception as inner_exc:
+                    quotes_map[sym] = {"price": None, "change_percent": 0.0, "error": str(inner_exc)}
+
+    quotes = []
+    for row in resolved:
+        quote = quotes_map.get(row["yahoo_symbol"], {"price": None, "change_percent": 0.0})
+        quotes.append({
+            **row,
+            "price": quote.get("price"),
+            "change_percent": quote.get("change_percent", 0.0),
+        })
+    return {"quotes": quotes}
+

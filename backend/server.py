@@ -155,6 +155,31 @@ def post_fundamentals_compare(req: FundamentalsCompareRequest):
 class FundamentalsSummaryRequest(BaseModel):
     tickers: List[str]
 
+class WatchlistItem(BaseModel):
+    ticker: str
+    exchange_id: str = ""
+    yahoo_symbol: str = ""
+    display_name: str = ""
+
+@app.get("/api/market/catalog")
+def get_market_catalog():
+    try:
+        return analyst.get_market_catalog()
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/watchlist/quotes")
+def post_watchlist_quotes(items: List[WatchlistItem]):
+    try:
+        if not items:
+            return {"quotes": []}
+        payload = [item.model_dump() for item in items]
+        return analyst.fetch_watchlist_quotes(payload)
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/fundamentals/summary")
 def post_fundamentals_summary(req: FundamentalsSummaryRequest):
     try:

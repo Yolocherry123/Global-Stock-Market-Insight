@@ -10,7 +10,8 @@ import {
   Calendar,
   Clock,
   Compass,
-  AlertTriangle
+  AlertTriangle,
+  Settings2
 } from 'lucide-react';
 import {
   LightweightCandlestickChart,
@@ -24,6 +25,8 @@ import {
 import { ZoomableChart } from './charts/ChartZoomModal';
 import { getFundamentalItems } from './fundamentalsFormatters';
 import FundamentalsTab from './FundamentalsTab';
+import WatchlistEditor from './WatchlistEditor';
+import { loadWatchlist, saveWatchlist, watchlistToApiPayload } from './watchlistStorage';
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'http://127.0.0.1:8000/api'
@@ -972,11 +975,77 @@ export default function App() {
   const [exchangeResearchLoading, setExchangeResearchLoading] = useState(false);
   const exchangeResearchCache = useRef({});
 
+  const [watchlist, setWatchlist] = useState(() => loadWatchlist());
+  const [watchlistQuotes, setWatchlistQuotes] = useState([]);
+  const [watchlistEditorOpen, setWatchlistEditorOpen] = useState(false);
+  const [marketCatalog, setMarketCatalog] = useState([]);
+  const [marketCatalogLoading, setMarketCatalogLoading] = useState(true);
+
 
 
   useEffect(() => {
     fetchGlobalData();
+    fetchMarketCatalog();
   }, []);
+
+  useEffect(() => {
+    fetchWatchlistQuotes();
+    const interval = setInterval(fetchWatchlistQuotes, 60000);
+    return () => clearInterval(interval);
+  }, [watchlist]);
+
+  const fetchMarketCatalog = async () => {
+    setMarketCatalogLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/market/catalog`);
+      if (res.ok) {
+        const data = await res.json();
+        setMarketCatalog(data.exchanges || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setMarketCatalogLoading(false);
+    }
+  };
+
+  const fetchWatchlistQuotes = async () => {
+    if (!watchlist.length) {
+      setWatchlistQuotes([]);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/watchlist/quotes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(watchlistToApiPayload(watchlist)),
+      });
+      if (!res.ok) throw new Error('Failed to fetch watchlist quotes');
+      const data = await res.json();
+      setWatchlistQuotes(data.quotes || []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleWatchlistSave = (items) => {
+    const saved = saveWatchlist(items);
+    setWatchlist(saved);
+  };
+
+  const tapeItems = watchlist.map((item) => {
+    const quote = watchlistQuotes.find(
+      (q) => (q.yahoo_symbol || q.yahooSymbol) === item.yahooSymbol
+        || (q.ticker || '').toUpperCase() === item.ticker,
+    );
+    return {
+      ticker: item.ticker,
+      exchange_id: item.exchangeId,
+      yahoo_symbol: item.yahooSymbol,
+      price: quote?.price ?? null,
+      change_percent: quote?.change_percent ?? 0,
+    };
+  });
 
   useEffect(() => {
     if (selectedExId && selectedExId !== 'global') {
@@ -1139,7 +1208,7 @@ export default function App() {
       <header className="header-bar">
         <div className="brand">
           <Activity className="brand-logo" size={20} />
-          <h1 className="brand-title">Antigravity Global Stock Terminal</h1>
+          <h1 className="brand-title">Global Stock Review and Screener</h1>
         </div>
         <div className="timezone-info" style={{ fontSize: '11px' }}>
           <span>Current Local Time: <span className="timezone-pill">{new Date().toLocaleTimeString('en-US', { hour12: false }) } IST</span></span>
@@ -1150,27 +1219,45 @@ export default function App() {
         </div>
       </header>
 
-      {/* 2. Top Ticker Tape (13 Indices) */}
+      {/* 2. Top Ticker Tape (custom watchlist) */}
       <div className="ticker-tape">
         <div className="ticker-wrap">
-          {exchanges.map((ex) => (
-            <div 
-              key={ex.id} 
-              className="ticker-item" 
+          {[...tapeItems, ...tapeItems].map((item, idx) => (
+            <div
+              key={`${item.yahoo_symbol || item.ticker}-${idx}`}
+              className="ticker-item"
               onClick={() => {
-                setSelectedExId(ex.id);
-                setActiveTab('movers');
+                if (item.exchange_id) setSelectedExId(item.exchange_id);
+                openInFundamentals(item.ticker);
               }}
+              title={`${item.ticker} · ${item.yahoo_symbol || ''}`}
             >
-              <span className="ticker-name">{EXCHANGE_DISPLAY_NAMES[ex.id]?.ticker || ex.name.split(' ')[0]}</span>
-              <span className="ticker-price">{ex.price ? ex.price.toLocaleString() : 'N/A'}</span>
-              <span className={`ticker-change ${ex.change_percent >= 0 ? 'text-up' : 'text-down'}`}>
-                {ex.change_percent >= 0 ? `+${ex.change_percent.toFixed(2)}%` : `${ex.change_percent.toFixed(2)}%`}
+              <span className="ticker-name">{item.ticker}</span>
+              <span className="ticker-price">{item.price != null ? item.price.toLocaleString() : 'N/A'}</span>
+              <span className={`ticker-change ${item.change_percent >= 0 ? 'text-up' : 'text-down'}`}>
+                {item.change_percent >= 0 ? `+${item.change_percent.toFixed(2)}%` : `${item.change_percent.toFixed(2)}%`}
               </span>
             </div>
           ))}
         </div>
+        <button
+          type="button"
+          className="ticker-edit-btn"
+          onClick={() => setWatchlistEditorOpen(true)}
+          title="Customize ticker tape"
+        >
+          <Settings2 size={12} />
+        </button>
       </div>
+
+      <WatchlistEditor
+        open={watchlistEditorOpen}
+        onClose={() => setWatchlistEditorOpen(false)}
+        watchlist={watchlist}
+        onSave={handleWatchlistSave}
+        catalog={marketCatalog}
+        catalogLoading={marketCatalogLoading}
+      />
 
       {/* 3. Main content Layout */}
       <main className="main-content">

@@ -558,20 +558,39 @@ export function parseRatioNumeric(ratios, key) {
   return parseNumericValue(raw);
 }
 
+const EXCHANGE_SHORT_LABELS = {
+  nasdaq: 'NASDAQ',
+  nyse: 'NYSE',
+  nse: 'NSE',
+  bse: 'BSE',
+  lse: 'LSE',
+  tsx: 'TSX',
+  hkex: 'HKEX',
+  jpx: 'JPX',
+  krx: 'KRX',
+  euronext: 'Euronext',
+  sse: 'Shanghai',
+  szse: 'Shenzhen',
+  twse: 'Taiwan',
+};
+
 export function getCatalogTickers(catalog, exchangeId = null) {
+  const suffixPattern = /\.(NS|BO|SS|SZ|T|PA|AS|BR|HK|TW|KS|KQ|TO|L)$/i;
   const out = [];
   for (const ex of catalog || []) {
     if (exchangeId && ex.id !== exchangeId) continue;
     for (const ticker of ex.tickers || []) {
-      const bare = ticker.replace(/\.(NS|BO)$/i, '');
-      const exLabel = ex.id === 'nse' ? 'NSE' : ex.id === 'bse' ? 'BSE' : ex.name;
+      const fullTicker = String(ticker).toUpperCase();
+      const bare = fullTicker.replace(suffixPattern, '');
+      const exLabel = EXCHANGE_SHORT_LABELS[ex.id] || ex.name;
       out.push({
         ticker: bare,
-        fullTicker: ticker,
+        fullTicker,
+        yahooSymbol: fullTicker,
         exchangeId: ex.id,
         exchangeName: ex.name,
         exchangeLabel: exLabel,
-        search: `${bare} ${ex.name} ${exLabel}`.toLowerCase(),
+        search: `${bare} ${fullTicker} ${ex.name} ${exLabel}`.toLowerCase(),
       });
     }
   }
