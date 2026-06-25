@@ -68,20 +68,28 @@ def _is_real_stock(symbol, quote):
         if word in long_name or word in short_name:
             return False
 
-    # ETFs and funds are often tagged as EQUITY by Yahoo; filter by name instead.
+    # ETFs and funds are often tagged as EQUITY by Yahoo; filter by name and symbol.
     for phrase in (
         "exchange traded fund",
         "mutual fund",
         "index fund",
         "closed-end fund",
         "closed end fund",
+        "innav",
     ):
         if phrase in combined_name:
             return False
     if re.search(r"\betf\b", combined_name):
         return False
 
+    # iNAV / BeES tickers often have no name metadata on Yahoo screener quotes.
+    base = symbol.rsplit(".", 1)[0].upper()
+    if "ETF" in base or base.endswith("BEES") or base.endswith("INAV"):
+        return False
+
     quote_type = (quote.get("quoteType") or "").upper()
+    if quote_type in ("ETF", "MUTUALFUND", "FUND"):
+        return False
     if quote_type and quote_type not in ("EQUITY", ""):
         return False
 
